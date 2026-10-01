@@ -12,7 +12,9 @@ from rich.table import Table
 
 import time
 
-from recs import config, db, enrich as enrich_mod, ingest as ingest_mod, match as match_mod, profile as profile_mod
+from recs import (availability as avail_mod, candidates as cand_mod, config, db, enrich as enrich_mod,
+                  ingest as ingest_mod, match as match_mod, profile as profile_mod, report as report_mod,
+                  score as score_mod)
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
@@ -121,7 +123,8 @@ def enrich():
 
     async def run():
         async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
-            st = await enrich_mod.fetch_movies(con, tmdb, ids, cfg["tmdb"]["metadata_ttl_days"])
+            st = await enrich_mod.fetch_movies(con, tmdb, ids, cfg["tmdb"]["metadata_ttl_days"],
+                                              region=cfg["availability"]["region"])
             return st, tmdb.calls
 
     t0 = time.perf_counter()
@@ -183,6 +186,71 @@ def profile(
             for label, aff, cnt, ex in reversed(worst):
                 t.add_row(f"[red]{label}[/]", f"[red]{aff:+.3f}[/]", str(cnt), ex)
         console.print(t)
+
+
+@app.command()
+def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
+    """Gera candidatos, pontua, classifica por disponibilidade no BR e escreve reports/AAAA-MM-DD.md."""
+    cfg = config.load()
+    root = config.root()
+    con = db.connect()
+    feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
+    profile_mod.build(con, cfg, feedback=feedback)
+    exclude = cand_mod.seen_ids(con) | {i for i, v in feedback.items() if v in ("ja_vi", "nao")}
+    subscribed = cfg["availability"]["provedores_assinados"]
+    t0 = time.perf_counter()
+
+    async def run():
+        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
+            pool = await cand_mod.generate(con, tmdb, cfg, exclude, root / "seeds")
+            cand_mod.save(con, pool)
+            st = await enrich_mod.fetch_movies(con, tmdb, list(pool.sources), cfg["tmdb"]["metadata_ttl_days"],
+                                              region=cfg["availability"]["region"])
+            if st.fetched:
+                enrich_mod.derive(con)
+                profile_mod.build_film_features(con)
+            score_mod.compute(con, cfg)
+            meta_calls = tmdb.calls
+            # Provedores só para o topo do ranking, com folga para a diversidade e as duas classes.
+            top = score_mod.ranked(con, max(15 * n, 300))
+            prov = await avail_mod.fetch(con, tmdb, [r["tmdb_id"] for r in top], cfg)
+            return pool, st, top, prov, meta_calls, tmdb.calls - meta_calls
+
+    with console.status("Gerando recomendações..."):
+        pool, st, top, prov, meta_calls, prov_calls = asyncio.run(run())
+
+    for r in top:
+        r["availability"] = avail_mod.classify(prov.get(r["tmdb_id"]), subscribed)
+    max_dir = cfg["score"]["max_per_director"]
+    available = score_mod.diversify([r for r in top if r["availability"].available], n, max_dir)
+    explore = score_mod.diversify([r for r in top if not r["availability"].available], n, max_dir)
+    for r in available + explore:
+        r["reasons"] = score_mod.reasons(con, r["tmdb_id"])
+
+    src_counts = Counter(s.split(":")[0] if s.startswith("seed") else s for srcs in pool.sources.values() for s in srcs)
+    eligible = con.execute("SELECT count(*) FILTER (eligible), count(*) FROM scores").fetchone()
+    console.print(f"[bold]Candidatos:[/] {len(pool.sources)} · elegíveis: {eligible[0]} · por fonte: "
+                  + ", ".join(f"{k} {v}" for k, v in src_counts.most_common()))
+    console.print(f"Enriquecimento: {st.cached} em cache, {st.fetched} baixados · requisições de metadados: "
+                  f"{meta_calls} · de provedores: {prov_calls} · {time.perf_counter() - t0:.1f}s")
+
+    for title, rows in (("Disponível no streaming BR", available), ("Para explorar", explore)):
+        t = Table(title=title, title_justify="left", expand=True)
+        for c, kw in (("#", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}), ("diretor", {"ratio": 2}),
+                      ("score", {"justify": "right"}), ("motivos", {"ratio": 4}), ("onde", {"ratio": 2})):
+            t.add_column(c, **kw)
+        for i, r in enumerate(rows, 1):
+            a = r["availability"]
+            where = ", ".join(f"[bold green]{p}[/]" if p in a.subscribed else p for p in a.streaming)                 if a.available else ("aluguel/compra" if a.rent_buy else "—")
+            t.add_row(str(i), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
+                      f"{r['score']:.2f}", report_mod.reasons_text(r["reasons"]), where)
+        console.print(t)
+
+    path = root / "reports" / f"{date.today()}.md"
+    report_mod.write(path, available, explore, {
+        "profile_films": profile_mod.summary(con)[0], "candidates": len(pool.sources), "eligible": eligible[0]})
+    console.print(f"Relatório: {path.relative_to(root)}")
+    console.print(report_mod.ATTRIBUTION)
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:

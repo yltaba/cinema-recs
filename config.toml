@@ -45,6 +45,8 @@ min_runtime = 60
 include_shorts = false
 include_documentaries = true
 max_per_director = 2
+# Tipos somados; os demais entram pela média no filme (evita inflar antologias e coproduções).
+sum_feature_types = ["keyword"]
 
 [availability]
 region = "BR"

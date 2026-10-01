@@ -12,7 +12,8 @@ import duckdb
 
 from recs.tmdb import TMDB, NotFound
 
-APPEND = "credits,keywords,recommendations,similar,watch/providers"
+# en-US traz nomes de pessoas romanizados ("Fruit Chan", não "陳果"); o título pt-BR vem de translations.
+APPEND = "credits,keywords,recommendations,similar,watch/providers,translations"
 
 # job do TMDB → papel usado no perfil
 CREW_ROLES = {
@@ -31,6 +32,27 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+LIST_FIELDS = ("id", "title", "original_title", "release_date", "vote_count", "adult", "original_language")
+
+
+def slim(p: dict, region: str = "BR") -> dict:
+    """Corta o que não usamos (provedores de outras regiões, translations de outras línguas, equipe fora
+    dos papéis do perfil, sinopses das listas): o payload cai de ~115 KB para poucos KB."""
+    wp = (p.get("watch/providers") or {}).get("results", {})
+    p["watch/providers"] = {"results": {region: wp[region]} if region in wp else {}}
+    tr = (p.get("translations") or {}).get("translations", [])
+    p["translations"] = {"translations": [t for t in tr if t.get("iso_639_1") == "pt" and t.get("iso_3166_1") == "BR"]}
+    if "credits" in p:
+        p["credits"]["cast"] = [{k: c.get(k) for k in ("id", "name", "character", "order")}
+                                for c in p["credits"].get("cast", [])[:10]]
+        p["credits"]["crew"] = [{k: c.get(k) for k in ("id", "name", "job", "department")}
+                                for c in p["credits"].get("crew", []) if c.get("job") in CREW_ROLES]
+    for kind in ("recommendations", "similar"):
+        if p.get(kind):
+            p[kind] = {"results": [{k: x.get(k) for k in LIST_FIELDS} for x in p[kind].get("results", [])]}
+    return p
+
+
 @dataclass
 class EnrichStats:
     requested: int = 0
@@ -40,11 +62,13 @@ class EnrichStats:
 
 
 async def fetch_movies(con: duckdb.DuckDBPyConnection, tmdb: TMDB, ids: list[int], ttl_days: float,
-                       language: str = "pt-BR") -> EnrichStats:
+                       language: str = "en-US", region: str = "BR") -> EnrichStats:
     stats = EnrichStats(requested=len(ids))
+    # Payloads antigos sem translations (formato anterior, em pt-BR) contam como vencidos.
     fresh = {
         r[0] for r in con.execute(
-            "SELECT tmdb_id FROM tmdb_raw WHERE fetched_at > ?", [_now() - timedelta(days=ttl_days)]
+            "SELECT tmdb_id FROM tmdb_raw WHERE fetched_at > ? AND json_exists(payload, '$.translations')",
+            [_now() - timedelta(days=ttl_days)],
         ).fetchall()
     }
     todo = [i for i in ids if i not in fresh]
@@ -56,7 +80,7 @@ async def fetch_movies(con: duckdb.DuckDBPyConnection, tmdb: TMDB, ids: list[int
         except NotFound:
             stats.not_found.append(tmdb_id)
             return
-        con.execute("INSERT OR REPLACE INTO tmdb_raw VALUES (?, ?, ?)", [tmdb_id, _now(), json.dumps(data)])
+        con.execute("INSERT OR REPLACE INTO tmdb_raw VALUES (?, ?, ?)", [tmdb_id, _now(), json.dumps(slim(data, region))])
         stats.fetched += 1
 
     await asyncio.gather(*(one(i) for i in todo))
@@ -68,8 +92,15 @@ def derive(con: duckdb.DuckDBPyConnection) -> None:
     roles = ", ".join(f"('{job}', '{role}')" for job, role in CREW_ROLES.items())
     con.execute(f"""
     CREATE OR REPLACE TABLE film_meta AS
-    SELECT tmdb_id,
-           payload->>'title'                          AS title,
+    WITH title_pt AS (
+        SELECT tmdb_id, any_value(json_extract_string(t, '$.data.title')) AS title
+        FROM (SELECT tmdb_id, unnest(json_extract(payload, '$.translations.translations[*]')) AS t FROM tmdb_raw)
+        WHERE json_extract_string(t, '$.iso_639_1') = 'pt' AND json_extract_string(t, '$.iso_3166_1') = 'BR'
+        GROUP BY tmdb_id
+    )
+    SELECT r.tmdb_id,
+           coalesce(nullif(tp.title, ''), payload->>'title') AS title,
+           payload->>'title'                          AS title_en,
            payload->>'original_title'                 AS original_title,
            TRY_CAST(payload->>'release_date' AS DATE) AS release_date,
            year(TRY_CAST(payload->>'release_date' AS DATE)) AS year,
@@ -81,7 +112,7 @@ def derive(con: duckdb.DuckDBPyConnection) -> None:
            payload->>'imdb_id'                        AS imdb_id,
            payload->>'overview'                       AS overview,
            fetched_at
-    FROM tmdb_raw;
+    FROM tmdb_raw r LEFT JOIN title_pt tp USING (tmdb_id);
 
     CREATE OR REPLACE TABLE film_genres AS
     SELECT tmdb_id, (g->>'id')::INTEGER AS genre_id, g->>'name' AS name
@@ -97,21 +128,21 @@ def derive(con: duckdb.DuckDBPyConnection) -> None:
 
     CREATE OR REPLACE TABLE film_languages AS
     WITH spoken AS (
-        SELECT tmdb_id, payload->>'original_language' AS orig, l->>'iso_639_1' AS iso, l->>'english_name' AS name
-        FROM (SELECT tmdb_id, payload, unnest(json_extract(payload, '$.spoken_languages[*]')) AS l FROM tmdb_raw)
-    )
+        SELECT tmdb_id, orig, json_extract_string(l, '$.iso_639_1') AS iso,
+               json_extract_string(l, '$.english_name') AS name
+        FROM (SELECT tmdb_id, payload->>'original_language' AS orig,
+                     unnest(json_extract(payload, '$.spoken_languages[*]')) AS l FROM tmdb_raw)
+    ), names AS (SELECT iso, any_value(name) AS name FROM spoken GROUP BY iso)
     SELECT r.tmdb_id, r.payload->>'original_language' AS iso,
-           coalesce((SELECT any_value(s.name) FROM spoken s WHERE s.iso = (r.payload->>'original_language')),
-                    r.payload->>'original_language') AS name,
-           TRUE AS is_original
-    FROM tmdb_raw r
+           coalesce(n.name, r.payload->>'original_language') AS name, TRUE AS is_original
+    FROM tmdb_raw r LEFT JOIN names n ON n.iso = (r.payload->>'original_language')
     UNION ALL
     SELECT tmdb_id, iso, name, FALSE FROM spoken WHERE iso <> orig;
 
     CREATE OR REPLACE TABLE film_people AS
     SELECT DISTINCT c.tmdb_id, (c.p->>'id')::INTEGER AS person_id, c.p->>'name' AS name, r.role
     FROM (SELECT tmdb_id, unnest(json_extract(payload, '$.credits.crew[*]')) AS p FROM tmdb_raw) c
-    JOIN (VALUES {roles}) r(job, role) ON c.p->>'job' = r.job;
+    JOIN (VALUES {roles}) r(job, role) ON json_extract_string(c.p, '$.job') = r.job;
 
     CREATE OR REPLACE TABLE film_links AS
     SELECT tmdb_id, (x->>'id')::INTEGER AS related_id, 'recommendation' AS kind
