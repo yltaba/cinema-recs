@@ -12,7 +12,7 @@ from rich.table import Table
 
 import time
 
-from recs import config, db, enrich as enrich_mod, ingest as ingest_mod, match as match_mod
+from recs import config, db, enrich as enrich_mod, ingest as ingest_mod, match as match_mod, profile as profile_mod
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
@@ -150,6 +150,39 @@ def enrich():
                (SELECT count(*) FROM film_meta m WHERE NOT EXISTS (SELECT 1 FROM film_keywords k WHERE k.tmdb_id = m.tmdb_id))
         FROM film_meta""").fetchone()
     console.print(f"Sem duração: {gaps[0]} · vote_count < 20: {gaps[1]} · sem keywords: {gaps[2]}")
+
+
+@app.command()
+def profile(
+    type: list[str] = typer.Option(None, "--type", "-t", help="Tipos a mostrar (padrão: todos)"),
+    n: int = typer.Option(15, help="Quantas features no topo"),
+    bottom: int = typer.Option(5, help="Quantas features com afinidade mais negativa"),
+):
+    """Monta o perfil de gosto e imprime o top N por tipo de feature."""
+    cfg = config.load()
+    con = db.connect()
+    feedback = profile_mod.load_feedback(config.root() / "overrides" / "feedback.csv")
+    profile_mod.build(con, cfg, feedback=feedback)
+    films, rated, mean, liked, wmin, wmax = profile_mod.summary(con)
+    console.print(f"[bold]Perfil:[/] {films} filmes · {rated} com nota (média {mean}) · {liked} likes · "
+                  f"w ∈ [{wmin}, {wmax}] · k = {cfg['profile']['shrinkage_k']}")
+    weights = cfg["profile"]["feature_weights"]
+    for ft in type or profile_mod.FEATURE_TYPES:
+        t = Table(title=f"{ft} (peso {weights.get(ft)})", title_justify="left", expand=True)
+        t.add_column("feature", ratio=2)
+        t.add_column("afinidade", justify="right")
+        t.add_column("n", justify="right")
+        t.add_column("filmes que puxam", ratio=5)
+        rows = profile_mod.top(con, ft, n)
+        for label, aff, cnt, ex in rows:
+            t.add_row(label, f"{aff:+.3f}", str(cnt), ex)
+        shown = {r[0] for r in rows}
+        worst = [r for r in profile_mod.top(con, ft, bottom, ascending=True) if r[0] not in shown] if bottom else []
+        if worst:
+            t.add_section()
+            for label, aff, cnt, ex in reversed(worst):
+                t.add_row(f"[red]{label}[/]", f"[red]{aff:+.3f}[/]", str(cnt), ex)
+        console.print(t)
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:

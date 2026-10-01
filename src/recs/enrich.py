@@ -96,12 +96,17 @@ def derive(con: duckdb.DuckDBPyConnection) -> None:
     FROM (SELECT tmdb_id, unnest(json_extract(payload, '$.production_countries[*]')) AS c FROM tmdb_raw);
 
     CREATE OR REPLACE TABLE film_languages AS
-    SELECT tmdb_id, payload->>'original_language' AS iso, TRUE AS is_original FROM tmdb_raw
+    WITH spoken AS (
+        SELECT tmdb_id, payload->>'original_language' AS orig, l->>'iso_639_1' AS iso, l->>'english_name' AS name
+        FROM (SELECT tmdb_id, payload, unnest(json_extract(payload, '$.spoken_languages[*]')) AS l FROM tmdb_raw)
+    )
+    SELECT r.tmdb_id, r.payload->>'original_language' AS iso,
+           coalesce((SELECT any_value(s.name) FROM spoken s WHERE s.iso = (r.payload->>'original_language')),
+                    r.payload->>'original_language') AS name,
+           TRUE AS is_original
+    FROM tmdb_raw r
     UNION ALL
-    SELECT tmdb_id, iso, FALSE FROM (
-        SELECT tmdb_id, payload->>'original_language' AS orig,
-               unnest(json_extract(payload, '$.spoken_languages[*]'))->>'iso_639_1' AS iso
-        FROM tmdb_raw) WHERE iso <> orig;
+    SELECT tmdb_id, iso, name, FALSE FROM spoken WHERE iso <> orig;
 
     CREATE OR REPLACE TABLE film_people AS
     SELECT DISTINCT c.tmdb_id, (c.p->>'id')::INTEGER AS person_id, c.p->>'name' AS name, r.role
