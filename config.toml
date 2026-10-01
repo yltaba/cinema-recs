@@ -36,10 +36,11 @@ seed_min_rating = 4.0
 top_directors = 25
 top_cinematographers = 10
 top_writers = 10
+people_rank = "affinity"   # "affinity" (média encolhida) ou "total" (Σw, favorece vários filmes bons)
 watchlist_boost = 1.3
 
 [score]
-popularity_alpha = 0.15
+popularity_alpha = 0.08     # "meio a meio": mediana de votos do top 20 ~640 (0.15 → ~260, 0.05 → ~1300)
 min_vote_count = 20
 min_runtime = 60
 include_shorts = false

@@ -63,13 +63,17 @@ async def generate(con: duckdb.DuckDBPyConnection, tmdb, cfg: dict, exclude: set
                 if _passes(item, min_votes, today):
                     pool.add(item["id"], kind)
 
-    # 2–3. filmografias dos top diretores, fotógrafos e roteiristas por afinidade
+    # 2–3. filmografias dos top diretores, fotógrafos e roteiristas. "affinity" ordena pela média
+    # encolhida; "total" pela evidência acumulada Σw = afinidade·(n + k), que favorece quem tem vários
+    # filmes bons em vez de um único 5★.
+    order = {"affinity": "affinity",
+             "total": f"affinity * (n + {float(cfg['profile']['shrinkage_k'])})"}[c.get("people_rank", "affinity")]
     people: list[tuple[int, str, str]] = []
     for role, key in (("director", "top_directors"), ("cinematographer", "top_cinematographers"),
                       ("writer", "top_writers")):
         people += [(int(pid), role, label) for pid, label in con.execute(
-            "SELECT feature_id, label FROM profile_features WHERE feature_type = ? AND affinity > 0 "
-            "ORDER BY affinity DESC, n DESC, feature_id LIMIT ?", [role, c[key]]).fetchall()]
+            f"SELECT feature_id, label FROM profile_features WHERE feature_type = ? AND affinity > 0 "
+            f"ORDER BY {order} DESC, n DESC, feature_id LIMIT ?", [role, c[key]]).fetchall()]
 
     async def filmography(pid: int, role: str) -> list[dict]:
         data = await tmdb.get(f"/person/{pid}/movie_credits", cfg["tmdb"]["metadata_ttl_days"], language="en-US")
