@@ -2,6 +2,7 @@
 name = "recs"
 version = "0.1.0"
 description = "Recomendador pessoal de filmes (Letterboxd → TMDB → streaming BR)"
+readme = "README.md"
 authors = [
     { name = "yltaba", email = "ytaba@usp.br" }
 ]
