@@ -33,11 +33,11 @@ def _escape(s: str) -> str:
 
 
 def section(title: str, rows: list[dict]) -> list[str]:
-    lines = [f"## {title}", "", "| # | filme | ano | diretor | país | score | motivos | onde |",
-             "|---|---|---|---|---|---|---|---|"]
+    lines = [f"## {title}", "", "| # | tmdb | filme | ano | diretor | país | score | motivos | onde |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(rows, 1):
         lines.append("| " + " | ".join([
-            str(i), _escape(title_cell(r)), str(r["year"] or ""), _escape(r["directors"]), r["countries"] or "",
+            str(i), str(r["tmdb_id"]), _escape(title_cell(r)), str(r["year"] or ""), _escape(r["directors"]), r["countries"] or "",
             f"{r['score']:.2f}", _escape(reasons_text(r["reasons"])), _escape(providers_text(r["availability"])),
         ]) + " |")
     return lines + [""]
@@ -49,7 +49,8 @@ def write(path: Path, available: list[dict], explore: list[dict], meta: dict) ->
         f"# Recomendações — {date.today()}",
         "",
         f"Perfil: {meta['profile_films']} filmes · candidatos: {meta['candidates']} "
-        f"({meta['eligible']} elegíveis) · provedores assinados em **negrito** · 📌 = watchlist",
+        f"({meta['eligible']} elegíveis) · provedores assinados em **negrito** · 📌 = watchlist · "
+        "`recs feedback <tmdb> bom|nao|ja_vi` para avaliar",
         "",
         *section("Disponível no streaming BR", available),
         *section("Para explorar", explore),

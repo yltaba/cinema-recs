@@ -13,7 +13,7 @@ from rich.table import Table
 import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, db, enrich as enrich_mod,
-                  ingest as ingest_mod, match as match_mod, profile as profile_mod, report as report_mod,
+                  evaluate as eval_mod, ingest as ingest_mod, match as match_mod, profile as profile_mod, report as report_mod,
                   score as score_mod)
 from recs.tmdb import TMDB
 
@@ -236,13 +236,13 @@ def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
 
     for title, rows in (("Disponível no streaming BR", available), ("Para explorar", explore)):
         t = Table(title=title, title_justify="left", expand=True)
-        for c, kw in (("#", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}), ("diretor", {"ratio": 2}),
+        for c, kw in (("#", {"justify": "right"}), ("tmdb", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}), ("diretor", {"ratio": 2}),
                       ("score", {"justify": "right"}), ("motivos", {"ratio": 4}), ("onde", {"ratio": 2})):
             t.add_column(c, **kw)
         for i, r in enumerate(rows, 1):
             a = r["availability"]
             where = ", ".join(f"[bold green]{p}[/]" if p in a.subscribed else p for p in a.streaming)                 if a.available else ("aluguel/compra" if a.rent_buy else "—")
-            t.add_row(str(i), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
+            t.add_row(str(i), str(r["tmdb_id"]), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
                       f"{r['score']:.2f}", report_mod.reasons_text(r["reasons"]), where)
         console.print(t)
 
@@ -251,6 +251,75 @@ def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
         "profile_films": profile_mod.summary(con)[0], "candidates": len(pool.sources), "eligible": eligible[0]})
     console.print(f"Relatório: {path.relative_to(root)}")
     console.print(report_mod.ATTRIBUTION)
+
+
+@app.command("eval")
+def eval_(
+    holdout: float = typer.Option(None, help="Fração dos filmes com nota alta escondida (padrão: config)"),
+    label: str = typer.Option("", help="Rótulo da execução em eval_runs"),
+    set_: list[str] = typer.Option(None, "--set", help="Sobrescreve o config só neste eval, ex.: score.popularity_alpha=0.3"),
+    vs: str = typer.Option(None, help="Rótulo da execução para comparar (padrão: a última)"),
+):
+    """Holdout offline: recall de candidatos, hit@20/50 e mediana de votos do top 20, média ± desvio entre seeds."""
+    cfg = eval_mod.apply_overrides(config.load(), set_ or [])
+    frac = holdout if holdout is not None else cfg["eval"]["holdout"]
+    con = db.connect()
+    prev = eval_mod.previous(con, frac, vs)
+    t0 = time.perf_counter()
+
+    async def run():
+        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
+            res = [await eval_mod.run_seed(con, tmdb, cfg, s, frac) for s in cfg["eval"]["seeds"]]
+            return res, tmdb.calls
+
+    with console.status(f"Avaliando {len(cfg['eval']['seeds'])} seeds..."):
+        results, calls = asyncio.run(run())
+    eval_mod.save(con, label or ", ".join(set_ or []), frac, cfg, results)
+
+    t = Table(title=f"Holdout {frac:.0%} dos filmes com nota ≥ {cfg['eval']['min_rating']}"
+                    + (f" · {', '.join(set_)}" if set_ else ""), title_justify="left")
+    for c in ("seed", "escondidos", "recall cand.", "hit@20", "hit@50", "votos top 20"):
+        t.add_column(c, justify="right")
+    for r in results:
+        t.add_row(str(r.seed), str(r.n_holdout), f"{r.cand_recall:.1%}", f"{r.hit20:.1%}", f"{r.hit50:.1%}",
+                  f"{r.median_votes_top20:.0f}")
+    summ = eval_mod.summarize(results)
+    t.add_section()
+    t.add_row("média ± dp", "", *(f"{m:.1%} ± {d:.1%}" for m, d in (summ[k] for k in eval_mod.METRICS[:3])),
+              "{:.0f} ± {:.0f}".format(*summ["median_votes_top20"]))
+    if prev:
+        delta = lambda k, fmt: fmt.format(summ[k][0] - prev[1][k])
+        t.add_row("Δ", "", *(delta(k, "{:+.1%}") for k in eval_mod.METRICS[:3]),
+                  delta("median_votes_top20", "{:+.0f}"))
+    console.print(t)
+    if prev:
+        console.print(f"Comparado com: {prev[0]}")
+    console.print(f"Requisições TMDB: {calls} · {time.perf_counter() - t0:.1f}s · "
+                  "tabelas de perfil/candidatos ficaram no estado do último seed; rode `recs recommend` para refazê-las")
+
+
+VERDICTS = ("bom", "nao", "ja_vi")
+
+
+@app.command()
+def feedback(
+    tmdb_id: int = typer.Argument(..., help="Id TMDB (coluna tmdb do recommend)"),
+    veredito: str = typer.Argument(..., help="bom | nao | ja_vi"),
+):
+    """Registra um veredito em overrides/feedback.csv (o último por filme vale)."""
+    if veredito not in VERDICTS:
+        raise typer.BadParameter(f"use um de: {', '.join(VERDICTS)}", param_hint="veredito")
+    path = config.root() / "overrides" / "feedback.csv"
+    new = not path.exists() or path.stat().st_size == 0
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        if new:
+            f.write("tmdb_id,veredito,data\n")
+        f.write(f"{tmdb_id},{veredito},{date.today()}\n")
+    row = db.connect().execute("SELECT title, year FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
+    name = f"{row[0]} ({row[1]})" if row else f"tmdb {tmdb_id} (fora do cache)"
+    effect = {"bom": "entra no perfil com peso positivo", "nao": "sai das recomendações",
+              "ja_vi": "sai das recomendações"}[veredito]
+    console.print(f"{name}: [bold]{veredito}[/] → {effect} no próximo `recs recommend`")
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:
