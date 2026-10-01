@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS film_map (
     match_method TEXT,
     confidence   DOUBLE
 );
+CREATE TABLE IF NOT EXISTS tmdb_raw (
+    tmdb_id    INTEGER PRIMARY KEY,
+    fetched_at TIMESTAMP,
+    payload    JSON
+);
 CREATE TABLE IF NOT EXISTS http_cache (
     key        TEXT PRIMARY KEY,
     fetched_at TIMESTAMP,

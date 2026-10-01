@@ -10,7 +10,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from recs import config, db, ingest as ingest_mod, match as match_mod
+import time
+
+from recs import config, db, enrich as enrich_mod, ingest as ingest_mod, match as match_mod
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
@@ -108,6 +110,46 @@ def match():
         console.print(t)
 
     _write_match_report(root / "reports" / f"{date.today()}-match.md", results, ambiguous, unmatched, auto_ok, len(auto))
+
+
+@app.command()
+def enrich():
+    """Baixa metadados TMDB dos filmes do Letterboxd (vistos + watchlist), com cache de 90 dias."""
+    cfg = config.load()
+    con = db.connect()
+    ids = [r[0] for r in con.execute("SELECT DISTINCT tmdb_id FROM film_map WHERE tmdb_id IS NOT NULL").fetchall()]
+
+    async def run():
+        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
+            st = await enrich_mod.fetch_movies(con, tmdb, ids, cfg["tmdb"]["metadata_ttl_days"])
+            return st, tmdb.calls
+
+    t0 = time.perf_counter()
+    with console.status(f"Enriquecendo {len(ids)} filmes..."):
+        st, calls = asyncio.run(run())
+        enrich_mod.derive(con)
+    console.print(f"[bold]Filmes:[/] {st.requested} · em cache: {st.cached} · baixados: {st.fetched} · "
+                  f"requisições: {calls} · {time.perf_counter() - t0:.1f}s")
+    if st.not_found:
+        console.print(f"[yellow]404 no TMDB:[/] {st.not_found}")
+
+    t = Table(title="Tabelas derivadas")
+    for c in ("tabela", "linhas", "filmes"):
+        t.add_column(c, justify="right" if c != "tabela" else "left")
+    for name in ("film_meta", "film_genres", "film_keywords", "film_countries", "film_languages",
+                 "film_people", "film_links"):
+        n, f = con.execute(f"SELECT count(*), count(DISTINCT tmdb_id) FROM {name}").fetchone()
+        t.add_row(name, str(n), str(f))
+    console.print(t)
+    for role, n in con.execute(
+        "SELECT role, count(DISTINCT tmdb_id) FROM film_people GROUP BY role ORDER BY 2 DESC"
+    ).fetchall():
+        console.print(f"  {role}: {n} filmes")
+    gaps = con.execute("""
+        SELECT count(*) FILTER (runtime IS NULL OR runtime = 0), count(*) FILTER (vote_count < 20),
+               (SELECT count(*) FROM film_meta m WHERE NOT EXISTS (SELECT 1 FROM film_keywords k WHERE k.tmdb_id = m.tmdb_id))
+        FROM film_meta""").fetchone()
+    console.print(f"Sem duração: {gaps[0]} · vote_count < 20: {gaps[1]} · sem keywords: {gaps[2]}")
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:

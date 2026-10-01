@@ -14,6 +14,10 @@ import httpx
 BASE_URL = "https://api.themoviedb.org/3"
 
 
+class NotFound(Exception):
+    pass
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -51,11 +55,12 @@ class TMDB:
         if row:
             self.cache_hits += 1
             return json.loads(row[0])
-        data = await self._fetch(path, params)
+        data = await self.fetch(path, params)
         self.con.execute("INSERT OR REPLACE INTO http_cache VALUES (?, ?, ?)", [key, _now(), json.dumps(data)])
         return data
 
-    async def _fetch(self, path: str, params: dict, retries: int = 6) -> dict:
+    async def fetch(self, path: str, params: dict, retries: int = 6) -> dict:
+        """Requisição sem cache."""
         async with self.sem:
             for attempt in range(retries):
                 try:
@@ -68,6 +73,8 @@ class TMDB:
                     wait = float(retry_after) if retry_after else min(2**attempt, 30) * (0.5 + random.random())
                     await asyncio.sleep(wait)
                     continue
+                if r.status_code == 404:
+                    raise NotFound(path)
                 r.raise_for_status()
                 self.calls += 1
                 return r.json()
