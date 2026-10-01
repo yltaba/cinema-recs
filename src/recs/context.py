@@ -84,7 +84,8 @@ def _split(values: list[str] | None) -> list[str]:
 
 @dataclass
 class Context:
-    genres: list[int] = field(default_factory=list)       # qualquer um deles (OU)
+    genres: list[int] = field(default_factory=list)       # qualquer um deles (OU); todos com all_genres
+    all_genres: bool = False
     max_runtime: int | None = None
     min_runtime: int | None = None
     languages: list[str] = field(default_factory=list)    # idioma original (ISO 639-1)
@@ -106,7 +107,7 @@ class Context:
         names = {gid: n[0] for gid, n in GENRES.items()}
         parts = []
         if self.genres:
-            parts.append("gênero: " + " ou ".join(names[g] for g in self.genres))
+            parts.append("gênero: " + (" + " if self.all_genres else " ou ").join(names[g] for g in self.genres))
         if self.min_runtime or self.max_runtime:
             parts.append(f"duração: {self.min_runtime or 0}–{self.max_runtime or '∞'} min")
         if self.languages:
@@ -127,10 +128,11 @@ class Context:
 
 
 def build(genre=None, max_runtime=None, min_runtime=None, language=None, country=None, years=None,
-          prefer=None, avoid=None, subscribed_only=False, streaming_only=False, exclude=None) -> Context:
+          prefer=None, avoid=None, subscribed_only=False, streaming_only=False, exclude=None,
+          all_genres=False) -> Context:
     y0, y1 = parse_years(years)
     return Context(
-        genres=parse_genres(genre or []), max_runtime=max_runtime, min_runtime=min_runtime,
+        genres=parse_genres(genre or []), all_genres=all_genres, max_runtime=max_runtime, min_runtime=min_runtime,
         languages=[x.lower() for x in _split(language)], countries=[x.upper() for x in _split(country)],
         year_from=y0, year_to=y1, prefer_keywords=_split(prefer), avoid_keywords=_split(avoid),
         subscribed_only=subscribed_only, streaming_only=streaming_only,
@@ -177,7 +179,7 @@ def discover_params(ctx: Context, cfg: dict, providers: list[int]) -> list[dict]
     n = cfg["now"]
     base: dict = {"include_adult": "false", "vote_count.gte": n["discover_min_votes"], "language": "en-US"}
     if ctx.genres:
-        base["with_genres"] = "|".join(map(str, ctx.genres))
+        base["with_genres"] = ("," if ctx.all_genres else "|").join(map(str, ctx.genres))
     if ctx.max_runtime:
         base["with_runtime.lte"] = ctx.max_runtime
     if ctx.min_runtime:
@@ -228,8 +230,9 @@ def matching(con: duckdb.DuckDBPyConnection, ctx: Context, avoid_ids: list[int],
         FROM scores s JOIN film_meta m USING (tmdb_id)
         WHERE s.eligible
           AND NOT list_contains($exclude, s.tmdb_id)
-          AND (len($genres) = 0 OR EXISTS (SELECT 1 FROM film_genres g
-                WHERE g.tmdb_id = s.tmdb_id AND list_contains($genres, g.genre_id)))
+          AND (len($genres) = 0 OR (SELECT count(DISTINCT g.genre_id) FROM film_genres g
+                WHERE g.tmdb_id = s.tmdb_id AND list_contains($genres, g.genre_id))
+                >= CASE WHEN $all_genres THEN len($genres) ELSE 1 END)
           AND ($max_rt IS NULL OR (m.runtime > 0 AND m.runtime <= $max_rt))
           AND ($min_rt IS NULL OR m.runtime >= $min_rt)
           AND (len($langs) = 0 OR list_contains($langs, m.original_language))
@@ -239,7 +242,7 @@ def matching(con: duckdb.DuckDBPyConnection, ctx: Context, avoid_ids: list[int],
           AND ($y1 IS NULL OR m.year <= $y1)
           AND NOT EXISTS (SELECT 1 FROM film_keywords k
                 WHERE k.tmdb_id = s.tmdb_id AND list_contains($avoid, k.keyword_id))
-    """, {"exclude": sorted(ctx.exclude), "genres": ctx.genres, "max_rt": ctx.max_runtime,
+    """, {"exclude": sorted(ctx.exclude), "genres": ctx.genres, "all_genres": ctx.all_genres, "max_rt": ctx.max_runtime,
           "min_rt": ctx.min_runtime, "langs": ctx.languages, "countries": ctx.countries,
           "y0": ctx.year_from, "y1": ctx.year_to, "avoid": avoid_ids, "prefer": prefer_ids})
     return {tid: hits or [] for tid, hits in con.execute("SELECT tmdb_id, hits FROM context_ok").fetchall()}

@@ -14,6 +14,8 @@ def title_cell(r: dict) -> str:
         t += f" ({r['original_title']})"
     if "watchlist" in (r["sources"] or []):
         t += " 📌"
+    if "salvo" in (r["sources"] or []):
+        t += " 🔖"
     return t
 
 
@@ -49,7 +51,7 @@ def write(path: Path, available: list[dict], explore: list[dict], meta: dict) ->
         f"# Recomendações — {date.today()}",
         "",
         f"Perfil: {meta['profile_films']} filmes · candidatos: {meta['candidates']} "
-        f"({meta['eligible']} elegíveis) · provedores assinados em **negrito** · 📌 = watchlist · "
+        f"({meta['eligible']} elegíveis) · provedores assinados em **negrito** · 📌 = watchlist · 🔖 = salvo · "
         "`recs feedback <tmdb> bom|nao|ja_vi` para avaliar",
         "",
         *section("Disponível no streaming BR", available),

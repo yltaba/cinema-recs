@@ -18,6 +18,7 @@ Status das fases e decisões em `PLANO.md`.
    |---|---|
    | engraçado, comédia, para rir | `-g comedia` |
    | romântico | `-g romance` (com comédia: `-g comedia -g romance` = qualquer um dos dois) |
+   | gênero composto: "comédia policial", "comédia romântica" | `-g comedia -g crime --all-genres` (exige todos) |
    | suspense, terror, animação, documentário, ação, drama... | `-g suspense`, `-g terror`, `-g animacao`... |
    | "não muito longo", "cedo amanhã" | `--max-runtime 110` (bem curto: 95) |
    | "tem na Netflix/nos nossos streamings", "sem alugar" | `--subscribed-only` |
@@ -39,11 +40,14 @@ Status das fases e decisões em `PLANO.md`.
    - onde assistir (os serviços em `assinados` primeiro);
    - uma frase de motivo. Use `motivos` e `keywords_preferidas` e explique a ligação com o gosto do usuário (por exemplo: "do Scorsese, que você costuma avaliar bem"). Não invente fatos sobre o filme além do que o JSON e o conhecimento geral sustentam.
 4. Para ajustes ("mais curto", "algo mais leve", "esse já vimos"), mude só a flag correspondente e rode de novo.
-5. Depois que o usuário assistir, ofereça registrar o veredito com `uv run recs feedback <tmdb_id> bom|nao|ja_vi`. Só registre se ele confirmar.
+5. "Salve essas" → `uv run recs salvar <ids...> --contexto "<pedido resumido>"` (lista local em
+   `overrides/salvos.csv`, que entra nas recomendações com o boost da watchlist). `uv run recs salvos` mostra os
+   pendentes com onde assistir. Em novas buscas, passe os salvos em `--exclude` para trazer opções novas.
+6. Depois que o usuário assistir, ofereça registrar o veredito com `uv run recs feedback <tmdb_id> bom|nao|ja_vi`. Só registre se ele confirmar.
 
 ## Comandos
 
-`uv run recs ingest <zip> | match | enrich | profile | recommend | now | keywords <termo> | eval | feedback`
+`uv run recs ingest <zip> | match | enrich | profile | recommend | now | keywords <termo> | salvar | salvos | eval | feedback`
 
 Testes:
 

@@ -98,3 +98,11 @@ def test_warnings():
     ctx = context.build(prefer=["feelgod"], avoid=["xyz"])
     w = context.warnings(ctx, {}, {}, found=3, wanted=8)
     assert len(w) == 3 and "feelgod" in w[0]
+
+
+def test_all_genres(con):
+    any_ = context.build(genre=["comedy", "romance"])
+    both = context.build(genre=["comedy", "romance"], all_genres=True)
+    assert set(context.matching(con, any_, [], [])) == {1, 2, 4, 5, 6}
+    assert set(context.matching(con, both, [], [])) == {4}
+    assert context.discover_params(both, CFG, [])[0]["with_genres"] == "35,10749"

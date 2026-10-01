@@ -16,7 +16,7 @@ from pathlib import Path
 
 import duckdb
 
-from recs import match as match_mod
+from recs import match as match_mod, saved as saved_mod
 
 # papel no perfil → jobs aceitos na filmografia
 FILMOGRAPHY_JOBS = {
@@ -92,7 +92,13 @@ async def generate(con: duckdb.DuckDBPyConnection, tmdb, cfg: dict, exclude: set
         pool.add(tid, "watchlist")
         pool.exempt.add(tid)
 
-    # 5. listas curadas (seeds/*.csv com Name,Year ou name,year)
+    # 5. salvos localmente (overrides/salvos.csv): sempre entram, como a watchlist
+    if seeds_dir:
+        for tid in saved_mod.load(seeds_dir.parent / "overrides" / "salvos.csv"):
+            pool.add(tid, "salvo")
+            pool.exempt.add(tid)
+
+    # 6. listas curadas (seeds/*.csv com Name,Year ou name,year)
     if seeds_dir and seeds_dir.exists():
         for path in sorted(seeds_dir.glob("*.csv")):
             with open(path, encoding="utf-8-sig", newline="") as f:

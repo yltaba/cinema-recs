@@ -15,7 +15,7 @@ import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
                   enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
-                  profile as profile_mod, report as report_mod, score as score_mod)
+                  profile as profile_mod, report as report_mod, saved as saved_mod, score as score_mod)
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
@@ -257,6 +257,7 @@ def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
 @app.command()
 def now(
     genre: list[str] = typer.Option(None, "--genre", "-g", help="Gênero(s), pt ou en; vários = qualquer um"),
+    all_genres: bool = typer.Option(False, "--all-genres", help="Exige todos os gêneros (comédia + policial)"),
     max_runtime: int = typer.Option(None, help="Duração máxima em minutos"),
     min_runtime: int = typer.Option(None, help="Duração mínima em minutos"),
     language: list[str] = typer.Option(None, help="Idioma original ISO 639-1 (pt, en, ja...)"),
@@ -276,7 +277,7 @@ def now(
     n = n or cfg["now"]["n"]
     try:
         ctx = context_mod.build(genre, max_runtime, min_runtime, language, country, years, prefer, avoid,
-                                subscribed_only, streaming_only, exclude)
+                                subscribed_only, streaming_only, exclude, all_genres)
     except ValueError as e:
         raise typer.BadParameter(str(e))
     con = db.connect()
@@ -333,7 +334,7 @@ def now(
                 "score": round(r["score"], 3), "score_contexto": round(r["context_score"], 3),
                 "motivos": [f"{t}: {label}" for t, label, _ in r["reasons"]],
                 "keywords_preferidas": r["prefer_hits"],
-                "watchlist": "watchlist" in (r["sources"] or []),
+                "watchlist": "watchlist" in (r["sources"] or []), "salvo": "salvo" in (r["sources"] or []),
                 "assinados": r["availability"].subscribed, "streaming": r["availability"].streaming,
                 "aluguel_compra": r["availability"].rent_buy,
             } for r in rows],
@@ -363,6 +364,50 @@ def now(
     console.print(t)
     for w in warnings:
         console.print(f"[yellow]{w}[/]")
+    console.print(report_mod.ATTRIBUTION)
+
+
+@app.command()
+def salvar(
+    tmdb_ids: list[int] = typer.Argument(..., help="Ids TMDB (coluna tmdb)"),
+    contexto: str = typer.Option("", help="Nota livre: o pedido que gerou a sugestão"),
+):
+    """Guarda filmes na lista local "para ver" (overrides/salvos.csv)."""
+    con = db.connect()
+    titles = dict(con.execute("SELECT tmdb_id, title FROM film_meta").fetchall())
+    new = saved_mod.add(config.root() / "overrides" / "salvos.csv",
+                        [(i, titles.get(i, "")) for i in tmdb_ids], contexto)
+    for i in tmdb_ids:
+        console.print(f"{'salvo' if i in new else 'já estava'}: {titles.get(i) or i}")
+
+
+@app.command()
+def salvos():
+    """Lista os salvos que ainda não foram vistos nem descartados, com onde assistir."""
+    cfg = config.load()
+    root = config.root()
+    con = db.connect()
+    items = saved_mod.load(root / "overrides" / "salvos.csv")
+    feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
+    done = cand_mod.seen_ids(con) | set(feedback)
+    ids = [i for i in items if i not in done]
+
+    async def run():
+        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
+            return await avail_mod.fetch(con, tmdb, ids, cfg)
+
+    prov = asyncio.run(run()) if ids else {}
+    meta = {r[0]: r[1:] for r in con.execute(
+        "SELECT tmdb_id, title, year, runtime FROM film_meta").fetchall()}
+    t = Table(title=f"Salvos ({len(ids)} pendentes de {len(items)})", title_justify="left", expand=True)
+    for c in ("tmdb", "filme", "ano", "min", "contexto", "onde"):
+        t.add_column(c)
+    for i in ids:
+        a = avail_mod.classify(prov.get(i), cfg["availability"]["provedores_assinados"])
+        where = ", ".join(f"[bold green]{p}[/]" if p in a.subscribed else p for p in a.streaming)             if a.available else ("aluguel/compra" if a.rent_buy else "—")
+        title, year, runtime = meta.get(i, (items[i]["titulo"], "", ""))
+        t.add_row(str(i), title, str(year or ""), str(runtime or ""), items[i]["contexto"], where)
+    console.print(t)
     console.print(report_mod.ATTRIBUTION)
 
 
