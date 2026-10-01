@@ -1,0 +1,30 @@
+[project]
+name = "recs"
+version = "0.1.0"
+description = "Recomendador pessoal de filmes (Letterboxd → TMDB → streaming BR)"
+authors = [
+    { name = "yltaba", email = "ytaba@usp.br" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.6",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.3",
+    "rapidfuzz>=3.14.6",
+    "rich>=15.0.0",
+    "typer>=0.27.2",
+    "unidecode>=1.4.0",
+]
+
+[project.scripts]
+recs = "recs:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "respx>=0.23.1",
+]
