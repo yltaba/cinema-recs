@@ -61,8 +61,10 @@ def compute(con: duckdb.DuckDBPyConnection, cfg: dict) -> None:
           "docs": s["include_documentaries"], "doc_genre": DOCUMENTARY_GENRE})
 
 
-def ranked(con: duckdb.DuckDBPyConnection, limit: int) -> list[dict]:
-    rows = con.execute("""
+def ranked(con: duckdb.DuckDBPyConnection, limit: int, only: str | None = None) -> list[dict]:
+    """Elegíveis por score; `only` restringe aos tmdb_id de uma tabela (ex.: context_ok)."""
+    restrict = f"AND s.tmdb_id IN (SELECT tmdb_id FROM {only})" if only else ""
+    rows = con.execute(f"""
         SELECT s.tmdb_id, s.score, s.base, s.pop_penalty, s.boost, s.sources,
                m.title, m.original_title, m.year, m.vote_count, m.runtime,
                (SELECT string_agg(name, ', ') FROM film_people p
@@ -71,7 +73,7 @@ def ranked(con: duckdb.DuckDBPyConnection, limit: int) -> list[dict]:
                  WHERE p.tmdb_id = s.tmdb_id AND p.role = 'director') AS director_ids,
                (SELECT string_agg(iso, '/') FROM film_countries c WHERE c.tmdb_id = s.tmdb_id) AS countries
         FROM scores s JOIN film_meta m USING (tmdb_id)
-        WHERE s.eligible
+        WHERE s.eligible {restrict}
         ORDER BY s.score DESC
         LIMIT ?""", [limit]).fetchall()
     cols = ["tmdb_id", "score", "base", "pop_penalty", "boost", "sources", "title", "original_title", "year",

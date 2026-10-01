@@ -53,6 +53,13 @@ sum_feature_types = ["keyword"]
 region = "BR"
 provedores_assinados = ["Netflix", "Amazon Prime Video", "HBO Max", "Disney Plus", "Apple TV", "MUBI"]
 
+[now]
+prefer_bonus = 0.25          # cada keyword preferida presente multiplica o score por (1 + bônus)
+discover_pages = 3           # páginas de /discover/movie por ordenação (20 filmes cada)
+discover_min_votes = 50
+discover_quality_votes = 300 # piso de votos na ordenação por nota média
+n = 8
+
 [eval]
 holdout = 0.15
 min_rating = 4.5

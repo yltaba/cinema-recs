@@ -16,15 +16,16 @@ Regras fixas:
 | 4. Candidatos, score, classes, relatório | `recs recommend` | feita |
 | 5. Rerank com LLM | — | descartada |
 | 6. Eval offline (holdout) e feedback | `recs eval`, `recs feedback` | feita |
-| 7. Modo contexto | `recs now` | a fazer |
+| 7. Modo contexto | `recs now`, `recs keywords` + `CLAUDE.md` | feita (perfil de casal pendente) |
 
 ## Fase 7 — modo contexto
 
 Pedidos em linguagem natural ("estou com minha namorada e queremos ver um filme engraçado") redirecionam
 a busca sem abandonar o perfil. O Claude Code faz a interpretação; o `recs` continua determinístico.
 
-- `recs now` com flags estruturadas: `--genre`, `--max-runtime`, `--subscribed-only`, `--language`,
-  `--decade`, `--prefer-keywords`/`--avoid-keywords`; saída em tabela e `--json`.
+- `recs now` com flags estruturadas: `--genre`, `--max-runtime`/`--min-runtime`, `--subscribed-only`,
+  `--streaming-only`, `--language`, `--country`, `--years`, `--prefer`/`--avoid` (keywords), `--exclude`;
+  saída em tabela e `--json`. `recs keywords <termo>` lista os nomes de keyword existentes.
 - Pool ampliado pelo contexto via `/discover/movie` (gênero, `watch_region=BR`,
   `with_watch_providers` dos assinados, `vote_count` mínimo), além das fontes da Fase 4.
 - Score = afinidade com o perfil × encaixe no contexto (keywords de tom como ajuste leve, filtros rígidos).

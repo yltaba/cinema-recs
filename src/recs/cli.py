@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections import Counter
 from datetime import date
@@ -12,9 +13,9 @@ from rich.table import Table
 
 import time
 
-from recs import (availability as avail_mod, candidates as cand_mod, config, db, enrich as enrich_mod,
-                  evaluate as eval_mod, ingest as ingest_mod, match as match_mod, profile as profile_mod, report as report_mod,
-                  score as score_mod)
+from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
+                  enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
+                  profile as profile_mod, report as report_mod, score as score_mod)
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
@@ -251,6 +252,126 @@ def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
         "profile_films": profile_mod.summary(con)[0], "candidates": len(pool.sources), "eligible": eligible[0]})
     console.print(f"Relatório: {path.relative_to(root)}")
     console.print(report_mod.ATTRIBUTION)
+
+
+@app.command()
+def now(
+    genre: list[str] = typer.Option(None, "--genre", "-g", help="Gênero(s), pt ou en; vários = qualquer um"),
+    max_runtime: int = typer.Option(None, help="Duração máxima em minutos"),
+    min_runtime: int = typer.Option(None, help="Duração mínima em minutos"),
+    language: list[str] = typer.Option(None, help="Idioma original ISO 639-1 (pt, en, ja...)"),
+    country: list[str] = typer.Option(None, help="País de produção ISO 3166-1 (BR, FR...)"),
+    years: str = typer.Option(None, help="1990s, 1980-2000, 2010-, -1979"),
+    prefer: list[str] = typer.Option(None, help="Keywords TMDB que puxam para cima (nome exato; ver `recs keywords`)"),
+    avoid: list[str] = typer.Option(None, help="Termos de keyword que eliminam o filme ('gore' pega 'extreme gore')"),
+    subscribed_only: bool = typer.Option(False, "--subscribed-only", help="Só nos serviços assinados"),
+    streaming_only: bool = typer.Option(False, "--streaming-only", help="Só em streaming no BR (qualquer serviço)"),
+    exclude: list[str] = typer.Option(None, help="tmdb_ids a pular só nesta consulta"),
+    n: int = typer.Option(None, help="Quantos filmes (padrão: config now.n)"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON (para o Claude Code)"),
+):
+    """Recomendações para o momento: o perfil decide a ordem, o contexto decide o recorte."""
+    cfg = config.load()
+    root = config.root()
+    n = n or cfg["now"]["n"]
+    try:
+        ctx = context_mod.build(genre, max_runtime, min_runtime, language, country, years, prefer, avoid,
+                                subscribed_only, streaming_only, exclude)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    con = db.connect()
+    feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
+    profile_mod.build(con, cfg, feedback=feedback)
+    seen = cand_mod.seen_ids(con) | {i for i, v in feedback.items() if v in ("ja_vi", "nao")}
+    subscribed = cfg["availability"]["provedores_assinados"]
+    t0 = time.perf_counter()
+
+    async def run():
+        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
+            pool = await cand_mod.generate(con, tmdb, cfg, seen, root / "seeds")
+            discovered = await context_mod.discover(tmdb, ctx, cfg) - seen
+            for i in discovered:
+                pool.add(i, "discover")
+            cand_mod.save(con, pool)
+            st = await enrich_mod.fetch_movies(con, tmdb, list(pool.sources), cfg["tmdb"]["metadata_ttl_days"],
+                                              region=cfg["availability"]["region"])
+            if st.fetched:
+                enrich_mod.derive(con)
+                profile_mod.build_film_features(con)
+            score_mod.compute(con, cfg)
+            avoid_kw = context_mod.keyword_ids(con, ctx.avoid_keywords, whole_word=True)
+            prefer_kw = context_mod.keyword_ids(con, ctx.prefer_keywords, whole_word=False)
+            hits = context_mod.matching(con, ctx, sorted(avoid_kw), sorted(prefer_kw))
+            top = context_mod.rerank(score_mod.ranked(con, 3000, only="context_ok"), hits,
+                                     cfg["now"]["prefer_bonus"])[:max(25 * n, 200)]
+            prov = await avail_mod.fetch(con, tmdb, [r["tmdb_id"] for r in top], cfg)
+            return len(discovered), st, top, prov, avoid_kw, prefer_kw, tmdb.calls
+
+    status = contextlib.nullcontext() if as_json else console.status("Buscando...")
+    with status:
+        n_disc, st, top, prov, avoid_kw, prefer_kw, calls = asyncio.run(run())
+
+    for r in top:
+        r["availability"] = avail_mod.classify(prov.get(r["tmdb_id"]), subscribed)
+    if ctx.subscribed_only:
+        top = [r for r in top if r["availability"].subscribed]
+    elif ctx.streaming_only:
+        top = [r for r in top if r["availability"].available]
+    rows = score_mod.diversify(top, n, cfg["score"]["max_per_director"])
+    genres = dict(con.execute("SELECT tmdb_id, list(name ORDER BY name) FROM film_genres GROUP BY 1").fetchall())
+    for r in rows:
+        r["reasons"] = score_mod.reasons(con, r["tmdb_id"])
+        r["genres"] = genres.get(r["tmdb_id"], [])
+    warnings = context_mod.warnings(ctx, avoid_kw, prefer_kw, len(rows), n)
+
+    if as_json:
+        out = {
+            "contexto": ctx.describe(),
+            "filmes": [{
+                "tmdb_id": r["tmdb_id"], "titulo": r["title"], "titulo_original": r["original_title"],
+                "ano": r["year"], "diretor": r["directors"], "duracao": r["runtime"], "generos": r["genres"],
+                "score": round(r["score"], 3), "score_contexto": round(r["context_score"], 3),
+                "motivos": [f"{t}: {label}" for t, label, _ in r["reasons"]],
+                "keywords_preferidas": r["prefer_hits"],
+                "watchlist": "watchlist" in (r["sources"] or []),
+                "assinados": r["availability"].subscribed, "streaming": r["availability"].streaming,
+                "aluguel_compra": r["availability"].rent_buy,
+            } for r in rows],
+            "avisos": warnings,
+            "atribuicao": report_mod.ATTRIBUTION,
+        }
+        typer.echo(json.dumps(out, ensure_ascii=False, indent=1))
+        return
+
+    console.print(f"[bold]Contexto:[/] {ctx.describe()}")
+    console.print(f"Pool: {st.requested} candidatos ({n_disc} via discover) · {len(top)} passam nos filtros · "
+                  f"requisições: {calls} · {time.perf_counter() - t0:.1f}s")
+    t = Table(expand=True)
+    for c, kw in (("#", {"justify": "right"}), ("tmdb", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}),
+                  ("diretor", {"ratio": 2}), ("min", {"justify": "right"}), ("score", {"justify": "right"}),
+                  ("motivos", {"ratio": 4}), ("onde", {"ratio": 2})):
+        t.add_column(c, **kw)
+    for i, r in enumerate(rows, 1):
+        a = r["availability"]
+        where = ", ".join(f"[bold green]{p}[/]" if p in a.subscribed else p for p in a.streaming) \
+            if a.available else ("aluguel/compra" if a.rent_buy else "—")
+        why = report_mod.reasons_text(r["reasons"])
+        if r["prefer_hits"]:
+            why += " · [cyan]" + ", ".join(r["prefer_hits"]) + "[/]"
+        t.add_row(str(i), str(r["tmdb_id"]), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
+                  str(r["runtime"] or ""), f"{r['context_score']:.2f}", why, where)
+    console.print(t)
+    for w in warnings:
+        console.print(f"[yellow]{w}[/]")
+    console.print(report_mod.ATTRIBUTION)
+
+
+@app.command()
+def keywords(term: str = typer.Argument(..., help="Trecho do nome (em inglês)"),
+             limit: int = typer.Option(30)):
+    """Keywords do TMDB já em cache que contêm o termo, com o nº de filmes (para --prefer/--avoid)."""
+    for name, cnt in context_mod.search_keywords(db.connect(), term, limit):
+        console.print(f"{cnt:5d}  {name}")
 
 
 @app.command("eval")
