@@ -67,6 +67,12 @@ def test_ndcg_mrr_and_diversity_known_ranking():
     assert evaluate.ranking_metrics(rows, set())["ndcg20"] == 0
 
 
+def test_max_country_share_measures_origin_concentration():
+    rows = [{"tmdb_id": i, "director_ids": [], "countries": c} for i, c in enumerate(["JP", "JP/FR", "US", None])]
+    assert evaluate.ranking_metrics(rows, set())["max_country_share20"] == 0.5
+    assert evaluate.ranking_metrics([], set())["max_country_share20"] is None
+
+
 def test_old_eval_schema_preserved_and_extended(con):
     con.execute("CREATE TABLE eval_runs(run_at TIMESTAMP, label TEXT, holdout DOUBLE, seed INTEGER, n_holdout INTEGER, "
                 "cand_recall DOUBLE, hit20 DOUBLE, hit50 DOUBLE, median_votes_top20 DOUBLE, config JSON)")

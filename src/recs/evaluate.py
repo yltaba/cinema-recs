@@ -6,6 +6,7 @@ tivessem sido vistos e mede se o pipeline os traria de volta.
     recall_candidatos = |holdout ∩ pool| / |holdout|
     hit@k             = |holdout ∩ top k| / |holdout|     (top k elegível, com o limite por diretor)
     votos_top20       = mediana de vote_count do top 20   (quão mainstream o ranking ficou)
+    pais_top20        = participação do país mais frequente no top 20 (concentração de origem)
 """
 
 from __future__ import annotations
@@ -23,7 +24,8 @@ import duckdb
 
 from recs import candidates as cand_mod, enrich as enrich_mod, profile as profile_mod, score as score_mod
 
-METRICS = ("cand_recall", "hit20", "hit50", "median_votes_top20", "ndcg20", "mrr50", "director_diversity20")
+METRICS = ("cand_recall", "hit20", "hit50", "median_votes_top20", "ndcg20", "mrr50", "director_diversity20",
+           "max_country_share20")
 
 
 @dataclass
@@ -38,6 +40,7 @@ class SeedResult:
     ndcg20: float = 0.0
     mrr50: float = 0.0
     director_diversity20: float | None = None
+    max_country_share20: float | None = None
 
 
 def ranking_metrics(rows, relevant):
@@ -49,7 +52,8 @@ def ranking_metrics(rows, relevant):
     directors = [set(r.get("director_ids") or []) for r in rows[:20] if r.get("director_ids")]
     distances = [1 - len(a & b) / len(a | b) for i, a in enumerate(directors) for b in directors[i+1:]]
     return {"ndcg20": dcg / ideal if ideal else 0.0, "mrr50": mrr,
-            "director_diversity20": statistics.mean(distances) if distances else None}
+            "director_diversity20": statistics.mean(distances) if distances else None,
+            "max_country_share20": score_mod.origin_share(rows[:20])[1] if rows else None}
 
 
 def apply_overrides(cfg: dict, sets: list[str]) -> dict:
@@ -124,11 +128,13 @@ def save(con: duckdb.DuckDBPyConnection, label: str, frac: float, cfg: dict, res
     rows = [{"label": label, "holdout": frac, "cfg": cfg, **asdict(r)} for r in results]
     con.execute("""
         INSERT INTO eval_runs (run_at, label, holdout, seed, n_holdout, cand_recall, hit20, hit50,
-                               median_votes_top20, config, ndcg20, mrr50, director_diversity20)
+                               median_votes_top20, config, ndcg20, mrr50, director_diversity20,
+                               max_country_share20)
         SELECT ?::TIMESTAMP, r->>'label', (r->>'holdout')::DOUBLE, (r->>'seed')::INTEGER,
                (r->>'n_holdout')::INTEGER, (r->>'cand_recall')::DOUBLE, (r->>'hit20')::DOUBLE,
                (r->>'hit50')::DOUBLE, (r->>'median_votes_top20')::DOUBLE, r->'cfg',
-               (r->>'ndcg20')::DOUBLE, (r->>'mrr50')::DOUBLE, (r->>'director_diversity20')::DOUBLE
+               (r->>'ndcg20')::DOUBLE, (r->>'mrr50')::DOUBLE, (r->>'director_diversity20')::DOUBLE,
+               (r->>'max_country_share20')::DOUBLE
         FROM (SELECT unnest(json_extract(?::JSON, '$[*]')) AS r)""", [now, json.dumps(rows)])
 
 
