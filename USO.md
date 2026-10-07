@@ -5,9 +5,9 @@ de cada um.
 
 ## 1. Pedir um filme para agora
 
-### Pelo Claude Code (recomendado)
+### Pelo Codex (recomendado)
 
-Abra o Claude Code na pasta `cinema-recs` e peça em linguagem natural:
+Abra o projeto `cinema-recs` no Codex e peça em linguagem natural (ou invoque `$filme`):
 
 > estou com minha namorada e queremos ver algo engraçado, nada pesado, até umas 2h
 >
@@ -15,14 +15,21 @@ Abra o Claude Code na pasta `cinema-recs` e peça em linguagem natural:
 >
 > algum terror dos anos 70, qualquer streaming serve
 
-O Claude transforma o pedido num `recs now`, roda o comando e apresenta de 3 a 5 opções com o motivo de cada
+O Codex transforma o pedido num `recs now --json`, roda o comando e apresenta de 3 a 5 opções, se disponíveis, com o motivo de cada
 uma e onde assistir. Depois disso você pode:
 
 - **Refinar o pedido:** "mais curto", "algo brasileiro", "esse já vimos".
 - **Salvar sugestões:** "salve essas".
-- **Contar o que achou:** depois de assistir, diga "assisti o X, gostei". O Claude registra o feedback.
+- **Contar o que achou:** diga "assisti o X, gostei"; o Codex oferece registrar o feedback.
+  "Registre que gostei de X" já autoriza o registro, sem confirmação adicional.
 
-As regras que ele segue estão no `CLAUDE.md`.
+As regras permanentes estão em [AGENTS.md](AGENTS.md), e o roteiro na
+[skill filme](.agents/skills/filme/SKILL.md). Em uma nova sessão, salvos e feedback continuam nos arquivos;
+os filtros de uma conversa anterior precisam ser informados novamente.
+
+Em refinamentos, o Codex mantém as restrições anteriores. Se faltarem resultados, apresenta os encontrados
+e propõe uma mudança de filtro para você escolher. Exclusões por tema dependem das keywords e não garantem
+ausência do conteúdo. Pedir algo para casal usa seu perfil existente, sem combinar dois históricos.
 
 ### Direto no terminal
 
@@ -46,7 +53,7 @@ uv run recs now -g comedia --max-runtime 110 --subscribed-only `
 | `--avoid` | termos que eliminam o filme: `gore` elimina também "extreme gore" |
 | `--exclude` | ids TMDB que ficam de fora só nesta consulta |
 | `--n` | quantos filmes mostrar (padrão 8) |
-| `--json` | saída para máquina, usada pelo Claude Code |
+| `--json` | saída estruturada para o Codex; disponível também em `keywords`, `salvar`, `salvos` e `feedback` |
 
 Para descobrir o nome exato de uma keyword:
 
@@ -65,7 +72,8 @@ uv run recs salvos                                         # pendentes, com onde
 ```
 
 - Os salvos ficam em `overrides/salvos.csv`.
-- Eles sempre entram nas recomendações, com o mesmo boost da watchlist (🔖 no relatório).
+- A CLI inclui salvos no pool, com o mesmo multiplicador da watchlist (🔖 no relatório).
+  Ao pedir opções novas na conversa, o Codex os exclui daquela consulta; você pode pedir para reconsiderá-los.
 - Saem da lista de pendentes quando você os marca com `feedback` ou quando aparecem como vistos num novo export.
 
 ## 3. Dizer o que achou
@@ -133,11 +141,15 @@ Tudo fica em `config.toml`. Os ajustes mais comuns:
 | `profile.feature_weights` | quanto pesam diretor, roteiro, fotografia, país, keywords etc. |
 | `now.prefer_bonus` | quanto cada keyword do `--prefer` sobe o filme |
 
-Antes de mudar um peso, compare a mudança com a linha de base:
+Antes de mudar um peso, compare a mudança com a linha de base em uma cópia isolada do projeto e dos dados:
 
 ```powershell
 uv run recs eval --set score.popularity_alpha=0.12 --vs "baseline-v2 alpha 0.08"
 ```
+
+O eval pode buscar dados na rede e deixa as tabelas derivadas no estado do último seed. "Offline" descreve
+o método de avaliação, não uma garantia de execução sem rede. Na cópia, rode `recs recommend` para reconstruir
+as tabelas depois. Compare execuções com o mesmo histórico, configuração de avaliação e cache.
 
 O eval mostra:
 
@@ -145,9 +157,10 @@ O eval mostra:
 - **hit@20 e hit@50:** fração que apareceu entre as 20 ou 50 primeiras sugestões;
 - **votos top 20:** mediana de votos no TMDB das 20 primeiras sugestões, ou seja, quão conhecidas elas são.
 
-Cada linha traz média ± desvio entre 5 seeds e o Δ em relação à execução comparada. Uma mudança só compensa se
-melhorar sem piorar o resto. Com cerca de 21 filmes escondidos por seed, diferenças abaixo de ~5 pontos são
-ruído. Se compensar, edite o `config.toml` e rode `recs eval --label <nome>` para fixar a nova referência.
+Cada linha traz média ± desvio entre os seeds configurados e o Δ em relação à execução comparada.
+`hit@20` e `hit@50` são recall em K. Com poucos filmes escondidos, diferenças pequenas exigem cautela;
+um limiar fixo de 5 pontos não demonstra significância. Avalie também diversidade e restrições antes de
+adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nome>` na cópia para fixar a referência.
 
 ## 7. Outros comandos
 
@@ -162,8 +175,8 @@ ruído. Se compensar, edite o `config.toml` e rode `recs eval --label <nome>` pa
 - **`TMDB_API_KEY ausente`:** crie o `.env` (veja o README).
 - **Um filme que você assina aparece como "outro streaming":** confira o nome exato em `recs now --json`
   (campo `streaming`) e ajuste `provedores_assinados`.
-- **Poucos resultados no `now`:** o comando avisa. Afrouxe a duração, troque `--subscribed-only` por
-  `--streaming-only` ou tire `--all-genres`.
+- **Poucos resultados no `now`:** o comando avisa. Você pode escolher ampliar duração, serviços ou gêneros;
+  o Codex preserva as restrições até essa escolha. A busca atual também limita candidatos antes de verificar disponibilidade.
 - **Disponibilidade desatualizada:** os provedores ficam 7 dias em cache, e os metadados 90 dias
   (`[tmdb]` no config).
 

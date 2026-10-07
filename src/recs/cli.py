@@ -18,7 +18,8 @@ from recs import (availability as avail_mod, candidates as cand_mod, config, con
                   profile as profile_mod, report as report_mod, saved as saved_mod, score as score_mod)
 from recs.tmdb import TMDB
 
-app = typer.Typer(no_args_is_help=True, add_completion=False, help="Recomendador pessoal de filmes.")
+app = typer.Typer(no_args_is_help=True, add_completion=False, pretty_exceptions_show_locals=False,
+                  help="Recomendador pessoal de filmes.")
 console = Console()
 
 
@@ -269,7 +270,7 @@ def now(
     streaming_only: bool = typer.Option(False, "--streaming-only", help="Só em streaming no BR (qualquer serviço)"),
     exclude: list[str] = typer.Option(None, help="tmdb_ids a pular só nesta consulta"),
     n: int = typer.Option(None, help="Quantos filmes (padrão: config now.n)"),
-    as_json: bool = typer.Option(False, "--json", help="Saída JSON (para o Claude Code)"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
 ):
     """Recomendações para o momento: o perfil decide a ordem, o contexto decide o recorte."""
     cfg = config.load()
@@ -327,6 +328,7 @@ def now(
 
     if as_json:
         out = {
+            "schema_version": 1,
             "contexto": ctx.describe(),
             "filmes": [{
                 "tmdb_id": r["tmdb_id"], "titulo": r["title"], "titulo_original": r["original_title"],
@@ -371,18 +373,24 @@ def now(
 def salvar(
     tmdb_ids: list[int] = typer.Argument(..., help="Ids TMDB (coluna tmdb)"),
     contexto: str = typer.Option("", help="Nota livre: o pedido que gerou a sugestão"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
 ):
     """Guarda filmes na lista local "para ver" (overrides/salvos.csv)."""
     con = db.connect()
     titles = dict(con.execute("SELECT tmdb_id, title FROM film_meta").fetchall())
     new = saved_mod.add(config.root() / "overrides" / "salvos.csv",
                         [(i, titles.get(i, "")) for i in tmdb_ids], contexto)
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, "salvos": new,
+                               "ja_salvos": list(dict.fromkeys(i for i in tmdb_ids if i not in new))},
+                              ensure_ascii=False))
+        return
     for i in tmdb_ids:
         console.print(f"{'salvo' if i in new else 'já estava'}: {titles.get(i) or i}")
 
 
 @app.command()
-def salvos():
+def salvos(as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação")):
     """Lista os salvos que ainda não foram vistos nem descartados, com onde assistir."""
     cfg = config.load()
     root = config.root()
@@ -399,6 +407,17 @@ def salvos():
     prov = asyncio.run(run()) if ids else {}
     meta = {r[0]: r[1:] for r in con.execute(
         "SELECT tmdb_id, title, year, runtime FROM film_meta").fetchall()}
+    if as_json:
+        films = []
+        for i in ids:
+            a = avail_mod.classify(prov.get(i), cfg["availability"]["provedores_assinados"])
+            title, year, runtime = meta.get(i, (items[i]["titulo"], None, None))
+            films.append({"tmdb_id": i, "titulo": title, "ano": year, "duracao": runtime,
+                          "contexto": items[i]["contexto"], "assinados": a.subscribed,
+                          "streaming": a.streaming, "aluguel_compra": a.rent_buy})
+        typer.echo(json.dumps({"schema_version": 1, "filmes": films, "total_salvos": len(items),
+                               "atribuicao": report_mod.ATTRIBUTION}, ensure_ascii=False))
+        return
     t = Table(title=f"Salvos ({len(ids)} pendentes de {len(items)})", title_justify="left", expand=True)
     for c in ("tmdb", "filme", "ano", "min", "contexto", "onde"):
         t.add_column(c)
@@ -413,9 +432,15 @@ def salvos():
 
 @app.command()
 def keywords(term: str = typer.Argument(..., help="Trecho do nome (em inglês)"),
-             limit: int = typer.Option(30)):
+             limit: int = typer.Option(30),
+             as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação")):
     """Keywords do TMDB já em cache que contêm o termo, com o nº de filmes (para --prefer/--avoid)."""
-    for name, cnt in context_mod.search_keywords(db.connect(), term, limit):
+    rows = context_mod.search_keywords(db.connect(), term, limit)
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, "keywords": [
+            {"nome": name, "filmes": cnt} for name, cnt in rows]}, ensure_ascii=False))
+        return
+    for name, cnt in rows:
         console.print(f"{cnt:5d}  {name}")
 
 
@@ -471,20 +496,26 @@ VERDICTS = ("bom", "nao", "ja_vi")
 def feedback(
     tmdb_id: int = typer.Argument(..., help="Id TMDB (coluna tmdb do recommend)"),
     veredito: str = typer.Argument(..., help="bom | nao | ja_vi"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
 ):
     """Registra um veredito em overrides/feedback.csv (o último por filme vale)."""
     if veredito not in VERDICTS:
         raise typer.BadParameter(f"use um de: {', '.join(VERDICTS)}", param_hint="veredito")
     path = config.root() / "overrides" / "feedback.csv"
+    row = db.connect().execute("SELECT title, year FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
+    path.parent.mkdir(parents=True, exist_ok=True)
     new = not path.exists() or path.stat().st_size == 0
     with open(path, "a", encoding="utf-8", newline="") as f:
         if new:
             f.write("tmdb_id,veredito,data\n")
         f.write(f"{tmdb_id},{veredito},{date.today()}\n")
-    row = db.connect().execute("SELECT title, year FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
     name = f"{row[0]} ({row[1]})" if row else f"tmdb {tmdb_id} (fora do cache)"
     effect = {"bom": "entra no perfil com peso positivo", "nao": "sai das recomendações",
               "ja_vi": "sai das recomendações"}[veredito]
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, "tmdb_id": tmdb_id, "veredito": veredito,
+                               "efeito": effect}, ensure_ascii=False))
+        return
     console.print(f"{name}: [bold]{veredito}[/] → {effect} no próximo `recs recommend`")
 
 

@@ -18,6 +18,10 @@ class NotFound(Exception):
     pass
 
 
+class TMDBError(RuntimeError):
+    """Falha pública sem URL, query, corpo ou credenciais da requisição."""
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -75,7 +79,8 @@ class TMDB:
                     continue
                 if r.status_code == 404:
                     raise NotFound(path)
-                r.raise_for_status()
+                if r.is_error:
+                    raise TMDBError(f"TMDB: HTTP {r.status_code}. Verifique credencial e parâmetros.") from None
                 self.calls += 1
                 return r.json()
         raise RuntimeError(f"TMDB {path} falhou após {retries} tentativas")

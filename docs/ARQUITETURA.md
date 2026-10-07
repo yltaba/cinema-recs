@@ -156,11 +156,16 @@ Depois do score normal:
 
 A disponibilidade é consultada só para o topo.
 
-O `CLAUDE.md` descreve como o Claude Code traduz pedidos em linguagem natural para essas flags. A interpretação
-fica com o modelo, e o `recs` continua determinístico e testável.
+O `AGENTS.md` contém as regras permanentes do Codex; `.agents/skills/filme/SKILL.md` contém o roteiro de
+tradução de pedidos para flags, refinamentos, salvos e feedback. A interpretação fica com o modelo,
+e o `recs` continua determinístico e testável. Não há chamada a modelo de linguagem no pipeline Python.
 
-Pendente: perfil de casal a partir de um segundo export. A afinidade de cada filme seria o mínimo dos dois
-perfis, e sairia o que qualquer um dos dois já viu.
+`now`, `keywords`, `salvar`, `salvos` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
+sucesso. Os campos existentes de `now` foram preservados. O contrato está em `MIGRACAO-CODEX.md`.
+Erros ainda usam código de saída não zero e stderr, sem contrato JSON unificado.
+
+Pendente: perfil de casal a partir de um segundo export. A combinação de afinidades ainda deve ser avaliada;
+o fluxo atual usa um único histórico.
 
 ## Tabelas
 
