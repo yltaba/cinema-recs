@@ -12,3 +12,4 @@ wheels/
 # Segredos e dados locais
 .env
 data/
+_notes/

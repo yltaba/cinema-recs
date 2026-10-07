@@ -103,3 +103,13 @@ def test_classify():
     b = classify({"buy": [{"provider_name": "Google Play Movies"}]}, ["Netflix"])
     assert not b.available and b.rent_buy
     assert not classify(None, []).available
+
+
+def test_personal_scores_do_not_depend_on_catalog_or_subscriptions(con):
+    add(con, 1, [("director", "1")])
+    add(con, 2, [("keyword", "k1")])
+    snapshots = []
+    for providers in (["Netflix"], ["MUBI"], []):
+        score.compute(con, {**CFG, "availability": {"provedores_assinados": providers}})
+        snapshots.append(con.execute("SELECT tmdb_id, score FROM scores ORDER BY score DESC").fetchall())
+    assert snapshots[0] == snapshots[1] == snapshots[2]

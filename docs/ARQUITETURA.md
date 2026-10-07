@@ -3,6 +3,10 @@
 O sistema é um pipeline em fases. Todas gravam num único banco DuckDB (`data/recs.duckdb`), e as tabelas
 derivadas são recriadas por SQL a partir do JSON bruto. Isso torna barato refazer qualquer etapa.
 
+O Codex opera a CLI e interpreta pedidos. O Python executa deterministicamente:
+`retrieval → eligibility/context filters → personal score → contextual rerank → availability → presentation`.
+Disponibilidade é metadado por padrão; somente flags explícitas ativam seu filtro. "Hoje/agora" não é uma flag.
+
 | módulo | papel |
 |---|---|
 | `ingest.py` | lê os CSVs do export → `lb_films` |
@@ -11,9 +15,13 @@ derivadas são recriadas por SQL a partir do JSON bruto. Isso torna barato refaz
 | `enrich.py` | baixa `/movie/{id}` → `tmdb_raw` e deriva as tabelas `film_*` |
 | `profile.py` | `film_features`, `profile_films`, `profile_features` |
 | `candidates.py` | gera o pool de candidatos → `candidates` |
-| `score.py` | `contributions`, `scores`, ranking, motivos e diversidade |
-| `availability.py` | provedores no BR e classificação disponível × explorar |
-| `context.py` | modo `now`: filtros, `/discover` e bônus por keyword |
+| `eligibility.py` | elegibilidade global independente de score e catálogo |
+| `score.py` | afinidade pessoal, componentes legados do ranking, motivos e diversidade |
+| `availability.py` | metadados de provedores; filtro explícito com verificação progressiva |
+| `context.py` | filtros estruturados, discover contextual e bônus por keyword |
+| `pipeline.py` | orquestra a consulta compartilhada por now/explore/recommend; diagnósticos |
+| `feedback.py` | vocabulário canônico, aliases e CSV persistente |
+| `interactions.py` | consultas e ações locais identificadas, sem aprendizado automático |
 | `saved.py` | lista local de salvos |
 | `evaluate.py` | eval offline por holdout → `eval_runs` |
 | `report.py` | relatório Markdown |
@@ -73,7 +81,9 @@ w(filme) = nota − média_do_usuário
 
 - Filmes sem nota recebem 0,1.
 - Um like soma +0,2.
-- Feedback `bom` dá 0,3 (para filmes não vistos no Letterboxd).
+- Feedback `liked` (alias `bom`) dá 0,3 para filmes não vistos no Letterboxd.
+- `disliked` é registrado, mas não recebe peso negativo inventado. `not_interested` não representa gosto.
+- Perfil com apenas um filme usa IDF de keyword zero, evitando o caso indefinido `0/0`.
 
 A afinidade de cada feature (diretor, roteirista, fotógrafo, montador, compositor, país, idioma original,
 década, keyword, gênero) é:
@@ -85,12 +95,18 @@ keywords: × ln(N/df) / ln(N)              (idf normalizado: keyword presente em
 
 ## Fase 4 — candidatos, score e disponibilidade
 
-**Fontes de candidatos**, com dedup e sem filmes já vistos ou com feedback `nao`/`ja_vi`:
+**Fontes de candidatos**, com dedup e sem filmes vistos ou com feedback persistente:
 
 1. `recommendations` e `similar` dos filmes com nota ≥ 4 (já estão no payload);
 2. filmografias dos 25 diretores, 10 fotógrafos e 10 roteiristas com maior afinidade;
 3. watchlist do Letterboxd e salvos, que são isentos dos filtros;
 4. `seeds/*.csv`, também isentos.
+5. discover geral, com até três features positivas de país/idioma/gênero com pelo menos dois filmes
+   de evidência; se não houver, discover geral sem feature. Configurável em `[retrieval]`.
+
+As consultas por feature se unem ao pool, não filtram suas outras fontes. Todas as origens sobrevivem à
+deduplicação em `candidates.sources`, aparecem em `fontes` e nas contagens `retrieval_sources` do JSON.
+Discover geral nunca recebe catálogo ou provedores. Também é usado pelo eval.
 
 Um pré-filtro barato (votos ≥ 20, já lançado) evita enriquecer filmes que seriam descartados.
 
@@ -104,6 +120,11 @@ score = base × 1/(1 + α·ln(1 + votos)) × boost  α = 0,08; boost = 1,3 para 
 Pessoas, país e idioma entram pela média no filme para que uma antologia com 20 diretores não some 20
 afinidades.
 
+`score_pessoal` expõe `base`: somente afinidades do histórico. `score` mantém a fórmula legada para
+compatibilidade; `ajustes` expõe popularidade e boost. Nenhum desses campos inclui disponibilidade.
+`score_contexto = score × (1 + prefer_bonus × número de keywords preferidas)` para score positivo;
+scores não positivos permanecem iguais. Empates usam ID TMDB. Pesos não foram alterados nesta reforma.
+
 Filtros: votos ≥ 20 e duração ≥ 60 min (curtas ficam fora por configuração). Na lista final, entram no máximo 2
 filmes por diretor.
 
@@ -111,6 +132,15 @@ filmes por diretor.
 
 - **streaming:** `flatrate`, `free` ou `ads`;
 - **aluguel/compra:** `rent` ou `buy`.
+
+Sem restrição, diversidade e seleção precedem a consulta de provedores, apenas para os filmes retornados.
+Com `--streaming-only`, `--subscribed-only` ou `--provider`, percorre-se o ranking em lotes até preencher N respeitando
+diversidade, esgotar o pool ou atingir `availability.max_candidates`. `batch_size` limita cada lote.
+`disponibilidade_conhecida=false` não penaliza nem exclui filmes nas consultas sem restrição.
+`stop_reason` distingue `filled`, `exhausted` e `limit`; este último produz aviso de candidatos não verificados.
+`--provider Netflix` aplica filtro determinístico pelo nome normalizado do serviço, sem equiparar canais
+adicionais à assinatura principal. Vários provedores são alternativas; junto de `--subscribed-only`, o
+provedor correspondente também precisa ser assinado. O Codex não filtra manualmente a saída.
 
 O sufixo de plano com anúncios é removido ("Netflix Standard with Ads" → Netflix). Canais ("HBO Max Amazon
 Channel") **não** contam como o serviço assinado, porque são assinaturas à parte.
@@ -125,8 +155,12 @@ Para cada seed (1 a 5), o eval:
    - **recall de candidatos:** a fração dos escondidos que voltou ao pool;
    - **hit@20 e hit@50:** a fração no top k depois do limite por diretor;
    - **votos top 20:** a mediana de votos do top 20.
+   - **NDCG@20 e MRR@50:** relevância binária do holdout (todos os escondidos são relevantes).
+   - **diversidade de diretores no top 20:** distância média de Jaccard entre pares com diretores conhecidos;
+     sem dois filmes com dados, o resultado é nulo, não zero.
 
-O resultado vai para `eval_runs` com o config usado. `--set` testa uma mudança sem editar o arquivo, e `--vs`
+O resultado vai para `eval_runs` com o config usado. Colunas novas são adicionadas idempotentemente;
+avaliações antigas têm métricas novas nulas, sem inventar comparativos. `--set` testa uma mudança sem editar o arquivo, e `--vs`
 compara com uma execução rotulada.
 
 Limitação conhecida: os filmes que o usuário já amou tendem a ser populares, então o eval favorece rankings
@@ -145,27 +179,42 @@ O gargalo é o pool: as `recommendations` do TMDB não alcançam vários clássi
 
 ## Fase 7 — modo contexto
 
-Em `recs now`, o pool da Fase 4 ganha resultados de `/discover/movie` com os mesmos filtros: gênero, duração,
-idioma, país, anos e provedores assinados. São duas ordenações, nota média (com piso de 300 votos) e
-popularidade, até 3 páginas cada, com cache de 7 dias.
+Em `recs now` e `recs explore`, o pool geral ganha resultados de `/discover/movie` com filtros contextuais:
+gênero, duração, idioma, país e anos; provedores somente com restrição explícita. São duas ordenações, nota média (com piso de 300 votos) e
+popularidade, até 3 páginas cada. O TTL depende da presença de restrição de disponibilidade.
 
-Depois do score normal:
+O pipeline separa filtros de pontuação:
 
 - gênero, duração, idioma, país, anos e keywords evitadas atuam como **filtros rígidos**;
-- cada keyword preferida presente multiplica o score positivo por 1,25.
+- keywords preferidas aplicam a fórmula aditiva de bônus descrita acima.
 
-A disponibilidade é consultada só para o topo.
+Cache de discover usa TTL de buscas sem streaming e TTL de provedores quando depende de disponibilidade.
+Não há mais corte em 3.000 scores nem corte prévio em 200 candidatos. Há orçamento somente para a
+verificação de disponibilidade obrigatória. Diagnósticos incluem contagens cumulativas por filtro.
 
 O `AGENTS.md` contém as regras permanentes do Codex; `.agents/skills/filme/SKILL.md` contém o roteiro de
 tradução de pedidos para flags, refinamentos, salvos e feedback. A interpretação fica com o modelo,
 e o `recs` continua determinístico e testável. Não há chamada a modelo de linguagem no pipeline Python.
 
-`now`, `keywords`, `salvar`, `salvos` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
+`now`, `explore`, `profile`, `interaction`, `keywords`, `salvar`, `salvos` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
 sucesso. Os campos existentes de `now` foram preservados. O contrato está em `MIGRACAO-CODEX.md`.
 Erros ainda usam código de saída não zero e stderr, sem contrato JSON unificado.
 
-Pendente: perfil de casal a partir de um segundo export. A combinação de afinidades ainda deve ser avaliada;
-o fluxo atual usa um único histórico.
+Perfil de casal está fora do escopo: somente reconsiderar com segundo histórico real e uso recorrente.
+`recommend` é compatibilidade para exploração com relatório. `explore --markdown caminho.md` torna essa
+saída opcional; a interface principal é JSON da CLI usado pelo Codex.
+
+## Interações e feedback
+
+Cada consulta concluída registra contexto estruturado, opções emitidas pela CLI, ranks, scores, fontes e
+configuração sem credenciais em `interactions`. Isso mede exposição pela CLI, não confirma visualização ou
+reprodução pelo usuário. `--interaction` associa explicitamente ações posteriores; não se presume a última
+consulta. Ações sem associação são registradas com ID nulo. Os registros não alimentam perfil ou ranking.
+
+CSV antigo é normalizado apenas na leitura (`bom → liked`, `nao → not_interested`, `ja_vi → already_seen`).
+O último feedback persistente prevalece. `liked`, `disliked` e `already_seen` indicam visto; `not_interested`
+exclui sem avaliar gosto. `not_now` exige interação e só registra ação contextual, retornando `exclude` para
+o próximo refinamento. Não entra no CSV nem altera futuras consultas independentes.
 
 ## Tabelas
 
@@ -180,8 +229,11 @@ o fluxo atual usa um único histórico.
 | `profile_films`, `profile_features` | perfil de gosto |
 | `candidates`, `contributions`, `scores` | última execução do ranking |
 | `eval_runs` | histórico de avaliações |
+| `interactions`, `interaction_actions` | instrumentação local aditiva, sem aprendizado |
 
 ## Desempenho
+
+Medições históricas anteriores à reforma (não revalidadas para discover ampliado e instrumentação):
 
 Com 711 filmes vistos e ~4.700 candidatos:
 

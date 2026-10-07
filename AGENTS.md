@@ -14,6 +14,9 @@ diretamente. Para manutenção de código, consulte `docs/ARQUITETURA.md` e `doc
 - A única entrada do Letterboxd é o export manual. Não acessar letterboxd.com, RSS ou fazer scraping.
 - Use a CLI e seu ranking para recomendações pessoais; fundamente os dados apresentados na saída real.
 - Preserve restrições explícitas nos refinamentos. Não relaxe duração, serviços ou exclusões sem escolha do usuário.
+- Streaming é metadado por padrão. "Hoje/agora" e estar em casal não implicam filtro de disponibilidade.
+  Sem restrição explícita, catálogo e assinaturas não podem alterar universo, score pessoal ou ordem.
+- `explore --json` é a entrada de descoberta ampla; Markdown é saída opcional. `now --json` usa o mesmo pipeline.
 - Termine listas de filmes com: "Dados de filmes: TMDB. Dados de streaming: JustWatch."
 - Credenciais são carregadas pelo programa de `TMDB_API_KEY`/`.env` (projeto ou ancestral). Nunca leia/imprima
   o conteúdo do `.env`, chaves, headers de autenticação ou URLs com credenciais. Prefira `.env` no projeto.

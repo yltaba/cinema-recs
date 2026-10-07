@@ -31,6 +31,10 @@ Em refinamentos, o Codex mantém as restrições anteriores. Se faltarem resulta
 e propõe uma mudança de filtro para você escolher. Exclusões por tema dependem das keywords e não garantem
 ausência do conteúdo. Pedir algo para casal usa seu perfil existente, sem combinar dois históricos.
 
+Disponibilidade é informação de saída por padrão: "hoje/agora" não restringe a serviços. Pedidos amplos
+("me recomende um filme", "cinema japonês", "me surpreenda") usam `recs explore --json` e consideram
+filmes sem streaming conhecido. Somente pedidos como "nos meus streamings" ativam o filtro correspondente.
+
 ### Direto no terminal
 
 ```powershell
@@ -47,12 +51,14 @@ uv run recs now -g comedia --max-runtime 110 --subscribed-only `
 | `--max-runtime`, `--min-runtime` | duração em minutos |
 | `--subscribed-only` | só filmes nos serviços assinados (`config.toml → provedores_assinados`) |
 | `--streaming-only` | só filmes em streaming no BR, em qualquer serviço |
+| `--provider Netflix` | só neste serviço; repita para aceitar qualquer um dos serviços indicados |
 | `--country BR`, `--language ja` | país de produção ou idioma original |
 | `--years` | `1990s`, `90s`, `1980-2000`, `2010-`, `-1979` |
 | `--prefer` | keywords do TMDB (nome exato, em inglês) que sobem o filme no ranking (+25% cada) |
 | `--avoid` | termos que eliminam o filme: `gore` elimina também "extreme gore" |
 | `--exclude` | ids TMDB que ficam de fora só nesta consulta |
 | `--n` | quantos filmes mostrar (padrão 8) |
+| `--markdown caminho.md` | relatório opcional, também em `explore` |
 | `--json` | saída estruturada para o Codex; disponível também em `keywords`, `salvar`, `salvos` e `feedback` |
 
 Para descobrir o nome exato de uma keyword:
@@ -86,16 +92,24 @@ uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugest
 
 - O feedback fica em `overrides/feedback.csv`.
 - Vale o último veredito de cada filme.
+- Novos nomes: `liked` (alias `bom`), `disliked`, `not_interested` (alias `nao`), `already_seen` (alias `ja_vi`).
+  `liked` preserva o peso positivo existente e indica assistido; `disliked` não aprende peso negativo ainda.
+- `not_now --interaction <id>` registra exclusão apenas contextual, sem CSV permanente. Acumule os IDs
+  retornados em `--exclude` no refinamento. Consultas independentes não herdam essa exclusão.
+- `salvar` e `feedback` aceitam `--interaction <id>` para relacionar a ação à consulta que apresentou o filme.
+  `recs interaction <id> --json` consulta o registro. Não há aprendizado automático das interações.
 - O feedback complementa o Letterboxd: avaliar e registrar o filme lá continua sendo o sinal mais forte, porque
   entra no próximo export.
 
 ## 4. Relatório completo
 
 ```powershell
-uv run recs recommend            # 20 por lista; --n 30 para mais
+uv run recs explore --json       # descoberta ampla, sem gravar relatório
+uv run recs explore --n 20 --markdown reports/exploracao.md --json
+uv run recs recommend            # compatibilidade: 20 filmes em reports/AAAA-MM-DD.md
 ```
 
-O relatório é gravado em `reports/AAAA-MM-DD.md` e traz, para cada filme:
+O relatório traz uma lista única, independente do catálogo, com:
 
 - o id TMDB;
 - o título em português, com o original entre parênteses;
@@ -135,6 +149,8 @@ Tudo fica em `config.toml`. Os ajustes mais comuns:
 | chave | efeito |
 |---|---|
 | `availability.provedores_assinados` | seus serviços. Use os nomes como o JustWatch mostra; canais Amazon contam à parte. |
+| `availability.batch_size`, `max_candidates` | tamanho do lote e orçamento de verificação quando streaming é obrigatório |
+| `retrieval.profile_discover_features`, `profile_discover_min_evidence` | expansão geral por features positivas do perfil; zero features desativa |
 | `score.popularity_alpha` | 0,08 hoje. Valor maior traz filmes menos conhecidos; menor traz mais populares. |
 | `score.include_documentaries`, `include_shorts` | incluir documentários ou curtas |
 | `score.max_per_director` | máximo de filmes do mesmo diretor por lista |
@@ -156,6 +172,8 @@ O eval mostra:
 - **recall de candidatos:** fração dos filmes escondidos que voltaram como candidatos;
 - **hit@20 e hit@50:** fração que apareceu entre as 20 ou 50 primeiras sugestões;
 - **votos top 20:** mediana de votos no TMDB das 20 primeiras sugestões, ou seja, quão conhecidas elas são.
+- **NDCG@20, MRR@50:** qualidade da ordem com relevância binária do holdout.
+- **diversidade de diretores:** distância média entre os conjuntos de diretores; nulo se faltarem dados.
 
 Cada linha traz média ± desvio entre os seeds configurados e o Δ em relação à execução comparada.
 `hit@20` e `hit@50` são recall em K. Com poucos filmes escondidos, diferenças pequenas exigem cautela;
@@ -167,6 +185,7 @@ adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nom
 | comando | para quê |
 |---|---|
 | `recs profile [-t director -t keyword] [--n 15]` | ver o perfil de gosto: features que mais puxam para cima e para baixo, com os filmes responsáveis |
+| `recs profile --json` | afinidades, IDs, quantidade de evidências, notas e pesos dos filmes responsáveis |
 | `recs keywords <termo>` | buscar nomes de keyword |
 | `recs eval [--set k=v] [--vs rótulo] [--label nome]` | avaliação offline |
 
@@ -176,7 +195,8 @@ adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nom
 - **Um filme que você assina aparece como "outro streaming":** confira o nome exato em `recs now --json`
   (campo `streaming`) e ajuste `provedores_assinados`.
 - **Poucos resultados no `now`:** o comando avisa. Você pode escolher ampliar duração, serviços ou gêneros;
-  o Codex preserva as restrições até essa escolha. A busca atual também limita candidatos antes de verificar disponibilidade.
+  o Codex preserva as restrições até essa escolha. `diagnostico.availability.stop_reason` distingue pool
+  esgotado de orçamento atingido (`limit`). O orçamento só existe quando streaming é obrigatório.
 - **Disponibilidade desatualizada:** os provedores ficam 7 dias em cache, e os metadados 90 dias
   (`[tmdb]` no config).
 

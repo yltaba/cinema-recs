@@ -1,5 +1,29 @@
 # Migração para Codex
 
+## Atualização arquitetural — 7 de outubro de 2026
+
+A reforma está descrita em [ARQUITETURA.md](ARQUITETURA.md), com plano de commits e impacto em
+[REFORMA-ARQUITETURA.md](REFORMA-ARQUITETURA.md). As seções seguintes registram a migração original de 6/10;
+as mudanças abaixo prevalecem sobre seus contratos e pendências históricos.
+
+- `now` e `explore` compartilham o pipeline; streaming só filtra por pedido explícito. A skill não
+  traduz “hoje/agora” em assinatura. `recommend` mantém o comando e arquivo, com lista única.
+- JSON v1 recebe campos aditivos: `interaction_id`, `consulta`, `diagnostico`; por filme,
+  `score_pessoal`, `fontes`, `ajustes`, `motivos_detalhados`, `disponibilidade_conhecida`.
+- `diagnostico` traz retrieved/enriched/eligible/context_matched/ranked/returned, fontes, contagens
+  cumulativas exclude/genres/runtime/language/country/years/avoid, e availability com checked/matched/
+  batches/returned/stop_reason. `limit` não significa esgotamento do pool.
+- `profile --json` expõe afinidades e evidências. `interaction <id> --json` consulta o registro local.
+- `salvar` e `feedback` recebem `--interaction`; feedback adiciona `veredito_canonico` e aceita
+  liked/disliked/not_interested/already_seen/not_now, preservando aliases. `not_now` não é persistente no CSV.
+- Migrações são aditivas e executadas no uso: tabelas de interações criadas se ausentes e colunas
+  NDCG/MRR/diversidade adicionadas a eval_runs. CSV antigo é normalizado na leitura, sem reescrita.
+- O log mede opções emitidas pela CLI; não mede se o usuário assistiu ou leu a apresentação do Codex.
+  Nenhum aprendizado automático usa o log. Ações só são ligadas à consulta quando seu ID é informado.
+- Perfil de casal permanece fora do escopo. O eval ainda requer cópia isolada dos dados e pode acessar rede.
+
+## Registro histórico de 6/10
+
 Implementada em 6 de outubro de 2026, a pedido do usuário após o cancelamento do Claude Code.
 O Codex é a interface conversacional do projeto. O ranking, a configuração e os dados pessoais continuam
 no pipeline Python existente. Não foram introduzidos OpenAI API, SDK de agentes, MCP ou serviços novos.

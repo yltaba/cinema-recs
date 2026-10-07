@@ -11,7 +11,7 @@ com gênero, duração, idioma, país, anos e keywords evitadas como filtros rí
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import duckdb
 from unidecode import unidecode
@@ -96,12 +96,13 @@ class Context:
     avoid_keywords: list[str] = field(default_factory=list)
     subscribed_only: bool = False
     streaming_only: bool = False
+    providers: list[str] = field(default_factory=list)  # filtro explícito: qualquer um dos nomes
     exclude: set[int] = field(default_factory=set)
 
     def is_empty(self) -> bool:
         return not (self.genres or self.max_runtime or self.min_runtime or self.languages or self.countries
                     or self.year_from or self.year_to or self.prefer_keywords or self.avoid_keywords
-                    or self.subscribed_only or self.streaming_only)
+                    or self.subscribed_only or self.streaming_only or self.providers or self.exclude)
 
     def describe(self) -> str:
         names = {gid: n[0] for gid, n in GENRES.items()}
@@ -124,12 +125,14 @@ class Context:
             parts.append("só nos meus serviços")
         elif self.streaming_only:
             parts.append("só streaming")
+        if self.providers:
+            parts.append("serviços: " + ", ".join(self.providers))
         return " · ".join(parts) or "sem restrições"
 
 
 def build(genre=None, max_runtime=None, min_runtime=None, language=None, country=None, years=None,
           prefer=None, avoid=None, subscribed_only=False, streaming_only=False, exclude=None,
-          all_genres=False) -> Context:
+          all_genres=False, provider=None) -> Context:
     y0, y1 = parse_years(years)
     return Context(
         genres=parse_genres(genre or []), all_genres=all_genres, max_runtime=max_runtime, min_runtime=min_runtime,
@@ -137,6 +140,7 @@ def build(genre=None, max_runtime=None, min_runtime=None, language=None, country
         year_from=y0, year_to=y1, prefer_keywords=_split(prefer), avoid_keywords=_split(avoid),
         subscribed_only=subscribed_only, streaming_only=streaming_only,
         exclude={int(x) for x in _split(exclude)},
+        providers=_split(provider),
     )
 
 
@@ -166,11 +170,11 @@ def search_keywords(con: duckdb.DuckDBPyConnection, term: str, limit: int = 30) 
 
 # --- discover --------------------------------------------------------------------------------------
 
-async def provider_ids(tmdb, cfg: dict) -> list[int]:
+async def provider_ids(tmdb, cfg: dict, names: list[str] | None = None) -> list[int]:
     """Ids TMDB dos serviços assinados na região (variantes com anúncios incluídas, canais não)."""
     region = cfg["availability"]["region"]
     data = await tmdb.get("/watch/providers/movie", cfg["tmdb"]["providers_ttl_days"], watch_region=region)
-    subs = cfg["availability"]["provedores_assinados"]
+    subs = names if names is not None else cfg["availability"]["provedores_assinados"]
     return sorted(p["provider_id"] for p in data.get("results", []) if is_subscribed(p["provider_name"], subs))
 
 
@@ -192,20 +196,20 @@ def discover_params(ctx: Context, cfg: dict, providers: list[int]) -> list[dict]
         base["primary_release_date.gte"] = f"{ctx.year_from}-01-01"
     if ctx.year_to:
         base["primary_release_date.lte"] = f"{ctx.year_to}-12-31"
-    if ctx.subscribed_only or ctx.streaming_only:
+    if ctx.subscribed_only or ctx.streaming_only or ctx.providers:
         base["watch_region"] = cfg["availability"]["region"]
         base["with_watch_monetization_types"] = "flatrate|free|ads"
-        if ctx.subscribed_only and providers:
+        if (ctx.subscribed_only or ctx.providers) and providers:
             base["with_watch_providers"] = "|".join(map(str, providers))
     return [{**base, "sort_by": "vote_average.desc", "vote_count.gte": n["discover_quality_votes"]},
             {**base, "sort_by": "popularity.desc"}]
 
 
-async def discover(tmdb, ctx: Context, cfg: dict) -> set[int]:
-    if ctx.is_empty():
+async def discover(tmdb, ctx: Context, cfg: dict, *, general: bool = False) -> set[int]:
+    if replace(ctx, exclude=set()).is_empty() and not general:
         return set()
-    providers = await provider_ids(tmdb, cfg) if ctx.subscribed_only else []
-    ttl = cfg["tmdb"]["providers_ttl_days"]  # resultados dependem de disponibilidade: cache curto
+    providers = await provider_ids(tmdb, cfg, ctx.providers or None) if (ctx.subscribed_only or ctx.providers) else []
+    ttl = cfg["tmdb"]["providers_ttl_days"] if (ctx.subscribed_only or ctx.streaming_only or ctx.providers) else cfg["tmdb"]["search_ttl_days"]
     out = set()
     for params in discover_params(ctx, cfg, providers):
         for page in range(1, cfg["now"]["discover_pages"] + 1):
@@ -218,16 +222,18 @@ async def discover(tmdb, ctx: Context, cfg: dict) -> set[int]:
 
 # --- filtro e ranking ------------------------------------------------------------------------------
 
-def matching(con: duckdb.DuckDBPyConnection, ctx: Context, avoid_ids: list[int], prefer_ids: list[int]
-             ) -> dict[int, list[str]]:
+def matching(con: duckdb.DuckDBPyConnection, ctx: Context, avoid_ids: list[int], prefer_ids: list[int],
+             *, eligibility_table: str = "scores") -> dict[int, list[str]]:
     """{tmdb_id: keywords preferidas presentes} para os candidatos elegíveis que passam nos filtros.
     Também grava a tabela temporária context_ok, usada por score.ranked(only=...)."""
-    con.execute("""
+    if eligibility_table not in ("scores", "eligibility"):
+        raise ValueError("tabela de elegibilidade inválida")
+    con.execute(f"""
         CREATE OR REPLACE TEMP TABLE context_ok AS
         SELECT s.tmdb_id,
                (SELECT list(k.name ORDER BY k.name) FROM film_keywords k
                  WHERE k.tmdb_id = s.tmdb_id AND list_contains($prefer, k.keyword_id)) AS hits
-        FROM scores s JOIN film_meta m USING (tmdb_id)
+        FROM {eligibility_table} s JOIN film_meta m USING (tmdb_id)
         WHERE s.eligible
           AND NOT list_contains($exclude, s.tmdb_id)
           AND (len($genres) = 0 OR (SELECT count(DISTINCT g.genre_id) FROM film_genres g
@@ -246,6 +252,23 @@ def matching(con: duckdb.DuckDBPyConnection, ctx: Context, avoid_ids: list[int],
           "min_rt": ctx.min_runtime, "langs": ctx.languages, "countries": ctx.countries,
           "y0": ctx.year_from, "y1": ctx.year_to, "avoid": avoid_ids, "prefer": prefer_ids})
     return {tid: hits or [] for tid, hits in con.execute("SELECT tmdb_id, hits FROM context_ok").fetchall()}
+
+
+def filter_counts(con, ctx, avoid_ids, prefer_ids):
+    """Contagens cumulativas; a última consulta deixa context_ok com o contexto completo."""
+    current = Context()
+    counts = {}
+    for name, fields in (
+        ("exclude", ("exclude",)), ("genres", ("genres", "all_genres")),
+        ("runtime", ("min_runtime", "max_runtime")), ("language", ("languages",)),
+        ("country", ("countries",)), ("years", ("year_from", "year_to")),
+        ("avoid", ("avoid_keywords",)),
+    ):
+        current = replace(current, **{f: getattr(ctx, f) for f in fields})
+        hits = matching(con, current, avoid_ids if name == "avoid" else [], prefer_ids,
+                        eligibility_table="eligibility")
+        counts[name] = len(hits)
+    return hits, counts
 
 
 def warnings(ctx: Context, avoid_kw: dict[int, str], prefer_kw: dict[int, str], found: int, wanted: int

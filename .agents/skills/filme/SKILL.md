@@ -10,7 +10,10 @@ e explica a saída. Não é necessário OpenAI API, SDK, MCP ou acesso automatiz
 
 ## Buscar e refinar
 
-Execute `uv run recs now ... --json`. Construa argumentos a partir do pedido e do contexto da conversa:
+Use `uv run recs explore ... --json --n 5` para descoberta ampla ("me recomende um filme",
+"cinema japonês", "me surpreenda") e `uv run recs now ... --json --n 5` para pedidos do momento.
+Ambos usam o mesmo pipeline; o relatório só é criado com `--markdown <caminho>`.
+Construa argumentos a partir do pedido e do contexto da conversa:
 
 | Pedido | Argumentos |
 |---|---|
@@ -21,21 +24,27 @@ Execute `uv run recs now ... --json`. Construa argumentos a partir do pedido e d
 | até duas horas | `--max-runtime 120` |
 | não muito longo / cedo amanhã | `--max-runtime 110` (diga o limite adotado) |
 | bem curto | `--max-runtime 95` (diga o limite adotado) |
-| hoje / agora / nos meus serviços / sem alugar | `--subscribed-only`, salvo escolha diferente do usuário |
+| hoje / agora | sem restrição de disponibilidade implícita |
+| nos meus serviços / só nas minhas assinaturas / sem alugar (no contexto de streaming) | `--subscribed-only` |
 | qualquer streaming serve | `--streaming-only` |
+| só na Netflix | `--provider Netflix` |
 | brasileiro / produção japonesa | `--country BR` / `--country JP` |
 | em japonês | `--language ja` |
 | anos 80 / de 2000 a 2010 | `--years 1980s` / `--years 2000-2010` |
 | já vimos esse / esse não, nesta busca | `--exclude <tmdb_id>` |
 
-`--subscribed-only` abrange TODOS os serviços do config. Se o usuário pedir exclusivamente Netflix, por exemplo,
-filtre também a saída pelo nome exato em `streaming`; não afirme que a flag restringe a um único serviço.
-Não confunda canais adicionais com a assinatura principal. Preserve esse filtro manual nos refinamentos.
+`--subscribed-only` abrange TODOS os serviços do config. `--provider Netflix` restringe a esse serviço no
+Python, incluindo a busca progressiva. Não confunda canais adicionais com a assinatura principal.
+Preserve serviços específicos nos refinamentos; não filtre nem reordene manualmente a saída.
 
 Para tom leve, procure keywords com `uv run recs keywords <termo> --json`; só passe nomes exatos encontrados
 em `--prefer`. Para exclusões, use `--avoid` com termos em inglês separados por vírgula. Exemplo:
 `--avoid "gore,rape,torture,suicide,sexual violence"`. Texto com espaços deve ser um argumento entre aspas.
 Estar em casal não implica gênero romântico ou restrição de conteúdo; use o que o pedido justifica.
+Disponibilidade não representa gosto. Nunca adicione restrição de streaming só pela urgência ou por estar
+em casal. "De preferência nos meus serviços" é preferência suave: informe os serviços da saída e deixe
+claro que não aplicou um filtro obrigatório. A CLI ainda não tem rerank suave por streaming; não converta
+essa preferência em `--subscribed-only` nem reordene por conta própria.
 As keywords não garantem ausência de um tema. Se a exclusão for importante, deixe essa limitação clara.
 
 Mantenha na conversa os filtros aplicados e os IDs de cada opção apresentada. Em "mais curto", altere só a
@@ -45,7 +54,9 @@ qual filme antes de gravar ou excluir. Não invente continuidade de contexto ent
 Para opções novas, leia os IDs de `overrides/salvos.csv` e passe-os em `--exclude`, junto às exclusões do pedido.
 Não exclua os salvos quando o usuário quiser reconsiderá-los. `recs salvos --json` consulta pendentes e provedores.
 
-Leia `avisos`. Corrija argumento inválido ou preferência sem correspondência no máximo uma vez por pedido,
+Leia `avisos` e `diagnostico`: disponibilidade obrigatória é verificada em lotes; `stop_reason=limit`
+significa candidatos ainda não verificados, e `exhausted` significa pool esgotado. Não confunda ambos.
+Corrija argumento inválido ou preferência sem correspondência no máximo uma vez por pedido,
 quando houver uma correção sustentada pelos dados. Se ainda faltarem opções, apresente as existentes e explique
 o limite. Não transforme poucos resultados em uma sequência de buscas nem relaxe restrições obrigatórias.
 Proponha uma alteração concreta de filtro para o usuário escolher quando necessário.
@@ -53,20 +64,33 @@ Proponha uma alteração concreta de filtro para o usuário escolher quando nece
 ## Apresentar
 
 Apresente de 3 a 5 opções, se existirem, respeitando a ordem retornada entre as que atendem ao pedido.
-Mostre título, ano, diretor, duração, serviços (assinados primeiro) e uma frase baseada em `motivos` e
+Guarde o `interaction_id` junto dos IDs apresentados. O registro automático contém as opções emitidas
+pela CLI, com ranks, scores e fontes; peça `--n` compatível com a quantidade que vai apresentar.
+Mostre título, ano, diretor, duração, serviços conhecidos (assinados primeiro) e uma frase baseada em `motivos` e
 `keywords_preferidas`. Campo ausente significa informação indisponível. Score não é probabilidade de gostar.
 Não invente sinopse, nota pessoal ou disponibilidade. A disponibilidade é do cache TMDB/JustWatch e pode mudar.
 Não use relatórios antigos como prova de onde assistir hoje. Termine com `atribuicao` da saída.
+`disponibilidade_conhecida=false` não prova ausência do filme em todos os serviços. `score_pessoal` é
+afinidade; `score` mantém ajustes legados de popularidade/watchlist/salvos; `score_contexto` incorpora
+keywords preferidas. Nenhum deles inclui provedores. Use `fontes` para explicar como o filme entrou no pool.
+
+Para perguntas sobre gosto, consulte `uv run recs profile --json`; use `features`, `evidencias` e `resumo`.
+Não trate pouca evidência como preferência consolidada. Não execute uma nova busca de filmes só para explicar o perfil.
 
 ## Salvar e dar feedback
 
-- "Salve essas": execute `uv run recs salvar <ids apresentados...> --contexto "<resumo>" --json`.
+- "Salve essas": execute `uv run recs salvar <ids apresentados...> --contexto "<resumo>" --interaction <interaction_id> --json`.
   Salve somente as opções referidas; confira a saída. O comando evita duplicatas.
+  Omita `--interaction` quando não houver ID conhecido; não invente associação com a última consulta.
 - "O que temos salvo?": `uv run recs salvos --json`; apresente os pendentes com os provedores retornados.
-- "Assisti X e gostei": ofereça registrar `bom`. Se já disser "registre que gostei de X", execute diretamente
-  `uv run recs feedback <id> bom --json`, sem pedir novamente.
-- `bom` entra com peso positivo; `ja_vi` exclui como assistido; `nao` exclui das recomendações e não aprende
-  afinidade negativa. "Não quero agora" deve ser exclusão da consulta, não feedback permanente.
+- "Assisti X e gostei": ofereça registrar `liked`. Se já disser "registre que gostei de X", execute diretamente
+  `uv run recs feedback <id> liked --json`, acrescentando `--interaction <id>` quando a associação for conhecida.
+- `liked` entra com peso positivo e indica assistido; `disliked` registra que não gostou, sem aprender peso
+  negativo ainda; `already_seen` registra visto sem avaliação; `not_interested` exclui sem avaliar gosto.
+  `bom`, `nao` e `ja_vi` continuam aliases. Não confunda "não gostei" com "não tenho interesse".
+- "Não quero agora" exclui só da consulta via `--exclude`. Se pedir registro contextual explícito, use
+  `feedback <filme> not_now --interaction <id> --json` e acumule o `exclude` retornado no próximo refinamento.
+  Isso não altera o CSV permanente nem exclui o filme em futuras consultas independentes.
 - O último veredito prevalece. Só anuncie gravação bem-sucedida após sucesso do comando.
 
 ## Falhas e primeiro uso

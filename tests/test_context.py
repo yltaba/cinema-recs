@@ -41,6 +41,20 @@ def test_discover_params():
     assert popular["sort_by"] == "popularity.desc" and popular["vote_count.gte"] == 50
 
 
+def test_discover_without_streaming_constraint_ignores_providers():
+    ctx = context.build(country=["JP"])
+    assert context.discover_params(ctx, CFG, [8]) == context.discover_params(ctx, CFG, [119])
+    assert all(not any("watch" in k for k in p) for p in context.discover_params(ctx, CFG, []))
+
+
+def test_exclusion_alone_does_not_trigger_unrelated_discover():
+    import asyncio
+    from unittest.mock import AsyncMock
+    tmdb = AsyncMock()
+    assert asyncio.run(context.discover(tmdb, context.Context(exclude={1}), CFG)) == set()
+    tmdb.get.assert_not_called()
+
+
 @pytest.fixture
 def con():
     c = duckdb.connect()

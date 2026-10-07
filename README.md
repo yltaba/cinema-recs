@@ -9,9 +9,8 @@ export do Letterboxd ──► matching TMDB ──► enriquecimento (cache) �
              relatório / sugestões para o momento ◄── score ◄── candidatos (TMDB)
 ```
 
-- **`recs recommend`** gera um relatório com duas listas. "Disponível no streaming BR" traz os filmes em
-  assinatura, grátis ou com anúncios; os serviços que você assina aparecem em negrito. "Para explorar" traz o
-  restante, marcando quando há aluguel ou compra.
+- **`recs explore --json`** faz descoberta ampla. Streaming é metadado e só restringe resultados quando
+  solicitado. `--markdown caminho.md` gera um relatório opcional; `recommend` continua como atalho de relatório.
 - **`recs now`** faz sugestões para o momento ("comédia policial nos meus serviços", "terror dos anos 70").
   O contexto define o recorte e o perfil define a ordem. No Codex, aberto nesta pasta, basta pedir em português
   (veja [USO.md](USO.md), [AGENTS.md](AGENTS.md) e a [skill filme](.agents/skills/filme/SKILL.md)).
@@ -70,7 +69,7 @@ uv run recs recommend                           # gera reports/AAAA-MM-DD.md
 ```
 
 O dia a dia está em [USO.md](USO.md), e os detalhes de funcionamento em
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). O status das fases está em [PLANO.md](PLANO.md).
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md). O status das fases está em [PLANO.md](docs/PLANO.md).
 
 ## Desenvolvimento
 

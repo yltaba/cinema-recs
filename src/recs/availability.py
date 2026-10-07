@@ -1,4 +1,4 @@
-"""Disponibilidade no Brasil (dados JustWatch via TMDB) e classificação disponível × explorar."""
+"""Metadados de disponibilidade e seleção progressiva quando streaming é obrigatório."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ class Availability:
     streaming: list[str] = field(default_factory=list)   # flatrate/free/ads
     subscribed: list[str] = field(default_factory=list)  # subconjunto de streaming que o usuário assina
     rent_buy: bool = False
+    known: bool = False  # ausência de dados não prova indisponibilidade
 
     @property
     def available(self) -> bool:
@@ -39,7 +40,7 @@ def is_subscribed(provider: str, subscribed: list[str]) -> bool:
 
 
 def classify(region_data: dict | None, subscribed: list[str]) -> Availability:
-    a = Availability()
+    a = Availability(known=region_data is not None)
     if not region_data:
         return a
     seen = set()
@@ -74,3 +75,48 @@ async def fetch(con: duckdb.DuckDBPyConnection, tmdb, ids: list[int], cfg: dict)
 
     await asyncio.gather(*(one(t) for t in ids if t not in out))
     return out
+
+
+async def select(con, tmdb, rows, cfg, ctx, n):
+    """Enriquece a seleção; só filtra quando o contexto exige streaming.
+
+    Percorre a ordem recebida em lotes até preencher a seleção com diversidade,
+    esgotar o pool ou consumir o orçamento. Nunca modifica scores.
+    """
+    from recs.score import diversify
+
+    max_dir = cfg["score"]["max_per_director"]
+    settings = cfg["availability"]
+    required = bool(ctx.subscribed_only or ctx.streaming_only or ctx.providers)
+    batch_size = settings.get("batch_size", 50)
+    limit = settings.get("max_candidates", 1000)
+    if n < 1 or batch_size < 1 or limit < 1:
+        raise ValueError("n, batch_size e max_candidates devem ser positivos")
+    diagnostic = {"required": required, "checked": 0, "matched": 0, "batches": 0}
+    # Sem restrição: escolhe antes da consulta, para que catálogo nunca afete a seleção.
+    pending = rows[:limit] if required else diversify(rows, n, max_dir)
+    accepted = []
+    for offset in range(0, len(pending), batch_size):
+        batch = pending[offset:offset + batch_size]
+        providers = await fetch(con, tmdb, [r["tmdb_id"] for r in batch], cfg)
+        diagnostic["batches"] += 1
+        diagnostic["checked"] += len(batch)
+        for original in batch:
+            r = dict(original)
+            a = classify(providers.get(r["tmdb_id"]), settings["provedores_assinados"])
+            r["availability"] = a
+            passes = ((not ctx.subscribed_only or bool(a.subscribed))
+                      and (not ctx.streaming_only or a.available)
+                      and (not ctx.providers or any(is_subscribed(p, ctx.providers)
+                                                   for p in (a.subscribed if ctx.subscribed_only else a.streaming))))
+            if passes:
+                accepted.append(r)
+        selected = diversify(accepted, n, max_dir)
+        if len(selected) >= n:
+            break
+    selected = diversify(accepted, n, max_dir)
+    diagnostic["matched"] = len(accepted)
+    diagnostic["returned"] = len(selected)
+    diagnostic["stop_reason"] = ("filled" if len(selected) >= n else
+                                  "limit" if required and len(rows) > limit else "exhausted")
+    return selected, diagnostic

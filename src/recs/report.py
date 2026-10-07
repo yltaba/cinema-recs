@@ -60,3 +60,11 @@ def write(path: Path, available: list[dict], explore: list[dict], meta: dict) ->
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_explore(path: Path, rows: list[dict], diagnostic: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"# Exploração — {date.today()}", "",
+             f"Candidatos: {diagnostic['retrieved']} · elegíveis: {diagnostic['eligible']}", "",
+             *section("Recomendações", rows), ATTRIBUTION, ""]
+    path.write_text("\n".join(lines), encoding="utf-8")

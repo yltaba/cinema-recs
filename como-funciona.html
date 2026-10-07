@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cinema-recs · como funciona</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f2ea;
+  --surface: #fffdf8;
+  --surface-2: #efe8db;
+  --ink: #1d1a16;
+  --muted: #6b6257;
+  --line: #ddd3c3;
+  --accent: #c2410c;
+  --accent-soft: #fbe3d4;
+  --gold: #b7791f;
+  --teal: #0f766e;
+  --teal-soft: #d5efec;
+  --violet: #6d28d9;
+  --violet-soft: #ebe2fb;
+  --code-bg: #1d1a16;
+  --code-ink: #f6f2ea;
+  --shadow: 0 1px 2px rgba(29,26,22,.06), 0 8px 24px rgba(29,26,22,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121110;
+    --surface: #1b1a18;
+    --surface-2: #24221f;
+    --ink: #f1ece3;
+    --muted: #a39a8d;
+    --line: #34312c;
+    --accent: #fb8a4c;
+    --accent-soft: #3a2418;
+    --gold: #e0b04f;
+    --teal: #4fd1c0;
+    --teal-soft: #15302d;
+    --violet: #b79cf5;
+    --violet-soft: #2a2140;
+    --code-bg: #0b0a09;
+    --code-ink: #f1ece3;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121110;
+  --surface: #1b1a18;
+  --surface-2: #24221f;
+  --ink: #f1ece3;
+  --muted: #a39a8d;
+  --line: #34312c;
+  --accent: #fb8a4c;
+  --accent-soft: #3a2418;
+  --gold: #e0b04f;
+  --teal: #4fd1c0;
+  --teal-soft: #15302d;
+  --violet: #b79cf5;
+  --violet-soft: #2a2140;
+  --code-bg: #0b0a09;
+  --code-ink: #f1ece3;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+h1, h2, h3 { font-family: Fraunces, Georgia, serif; line-height: 1.15; margin: 0; }
+h2 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; }
+p { margin: 0 0 1em; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; }
+:not(pre) > code { background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
+a { color: var(--accent); }
+
+/* topo */
+.topbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; height: 52px; }
+.brand { font-family: Fraunces, serif; font-weight: 800; letter-spacing: -.01em; }
+.brand span { color: var(--accent); }
+.nav { display: flex; gap: 14px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav a { color: var(--muted); text-decoration: none; font-size: .88rem; white-space: nowrap; }
+.nav a:hover { color: var(--ink); }
+.theme-btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; width: 34px; height: 34px; cursor: pointer; flex: none; }
+
+/* hero */
+.hero { padding: 72px 0 48px; position: relative; overflow: hidden; }
+.film-strip { position: absolute; inset: auto 0 0 0; height: 22px; background:
+  repeating-linear-gradient(90deg, transparent 0 14px, var(--line) 14px 26px) top/100% 6px no-repeat,
+  repeating-linear-gradient(90deg, transparent 0 14px, var(--line) 14px 26px) bottom/100% 6px no-repeat; opacity: .8; }
+.eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .75rem; color: var(--accent); font-weight: 600; margin-bottom: 14px; }
+.hero h1 { font-size: clamp(2.4rem, 7vw, 4.6rem); font-weight: 800; letter-spacing: -.02em; max-width: 14ch; }
+.hero h1 em { font-style: italic; color: var(--accent); font-weight: 600; }
+.lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; margin-top: 20px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 36px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); }
+.stat b { display: block; font-family: Fraunces, serif; font-size: 1.9rem; font-weight: 600; }
+.stat small { color: var(--muted); font-size: .82rem; }
+
+section { padding: 64px 0; border-top: 1px solid var(--line); }
+.sec-head { display: flex; gap: 18px; align-items: baseline; margin-bottom: 28px; }
+.sec-num { font-family: "JetBrains Mono", monospace; color: var(--accent); font-size: .85rem; }
+.sec-intro { color: var(--muted); max-width: 70ch; margin-top: 10px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* pipeline */
+.pipe { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: st; }
+.stage { position: relative; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 16px; cursor: pointer; color: var(--ink); font: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; box-shadow: var(--shadow); }
+.stage:hover { transform: translateY(-2px); }
+.stage[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.stage .ico { font-size: 1.4rem; }
+.stage .cmd { display: block; font-family: "JetBrains Mono", monospace; font-size: .74rem; color: var(--accent); margin-top: 6px; }
+.stage h3 { font-size: 1rem; margin-top: 4px; }
+.stage p { font-size: .82rem; color: var(--muted); margin: 4px 0 0; }
+.stage .out { display: inline-block; margin-top: 8px; font-family: "JetBrains Mono", monospace; font-size: .7rem; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+.stage.ext { border-style: dashed; }
+.detail { margin-top: 18px; border-left: 4px solid var(--accent); }
+.detail h3 { margin-bottom: 8px; }
+.detail ul { margin: 0; padding-left: 1.2em; }
+.detail li { margin: .25em 0; }
+.legend-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: .82rem; color: var(--muted); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+
+pre { background: var(--code-bg); color: var(--code-ink); padding: 16px 18px; border-radius: 12px; overflow-x: auto; font: 13px/1.6 "JetBrains Mono", monospace; margin: 0; }
+pre .c { color: #8f8578; }
+pre .k { color: #fb8a4c; }
+pre .s { color: #7dd3c0; }
+
+/* perfil */
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 110px 1fr 36px; gap: 10px; align-items: center; font-size: .88rem; }
+.bar-track { height: 12px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 6px; }
+.bar-row .v { font-family: "JetBrains Mono", monospace; font-size: .8rem; text-align: right; color: var(--muted); }
+
+.formula { font-family: "JetBrains Mono", monospace; font-size: .95rem; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 10px 0; overflow-x: auto; white-space: nowrap; }
+.formula .hl { color: var(--accent); font-weight: 600; }
+
+label.ctl { display: block; font-size: .85rem; color: var(--muted); margin: 12px 0 4px; }
+label.ctl b { color: var(--ink); font-family: "JetBrains Mono", monospace; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.readout { font-family: Fraunces, serif; font-size: 2rem; font-weight: 600; margin-top: 10px; }
+.readout small { font-family: Inter, sans-serif; font-size: .85rem; color: var(--muted); font-weight: 400; }
+.note { font-size: .82rem; color: var(--muted); }
+
+/* candidatos */
+.src { border-top: 4px solid var(--teal); }
+.src.b { border-top-color: var(--violet); }
+.src.c { border-top-color: var(--gold); }
+.src.d { border-top-color: var(--accent); }
+.src p { font-size: .9rem; color: var(--muted); margin: 6px 0 0; }
+.tag { display: inline-block; font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); margin-top: 10px; }
+.funnel { display: grid; gap: 6px; margin-top: 22px; }
+.funnel div { padding: 10px 14px; border-radius: 10px; background: var(--teal-soft); color: var(--ink); font-size: .9rem; display: flex; justify-content: space-between; gap: 10px; margin: 0 auto; }
+.funnel div b { font-family: "JetBrains Mono", monospace; }
+
+/* alpha chart */
+.curve-wrap svg { width: 100%; height: auto; display: block; }
+.curve-wrap text { fill: var(--muted); font: 11px Inter, sans-serif; }
+
+/* disponibilidade */
+.avail { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.lane h3 { display: flex; align-items: center; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font-size: .8rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); }
+.chip.sub { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.chip.no { text-decoration: line-through; color: var(--muted); }
+
+/* conversa */
+.convo { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 12px; align-items: stretch; }
+.arrow { align-self: center; color: var(--muted); font-size: 1.4rem; }
+.bubble { background: var(--violet-soft); border-radius: 16px 16px 16px 4px; padding: 14px 16px; font-size: .95rem; }
+.who { font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 6px; }
+.result { display: grid; gap: 8px; }
+.film { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.poster { width: 34px; height: 48px; border-radius: 4px; background: linear-gradient(160deg, var(--accent), var(--gold)); }
+.film b { font-size: .88rem; display: block; line-height: 1.3; }
+.film span { font-size: .75rem; color: var(--muted); }
+
+.tbl { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.tbl th, .tbl td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl th { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.tbl-wrap { overflow-x: auto; }
+
+/* eval */
+.metric b { font-family: Fraunces, serif; font-size: 2.2rem; font-weight: 600; display: block; }
+.metric span { color: var(--muted); font-size: .85rem; }
+.holdout { display: flex; flex-wrap: wrap; gap: 4px; margin: 14px 0; }
+.holdout i { width: 14px; height: 20px; border-radius: 2px; background: var(--surface-2); border: 1px solid var(--line); }
+.holdout i.h { background: var(--teal); border-color: var(--teal); }
+.holdout i.f { background: var(--accent); border-color: var(--accent); }
+
+/* princípios */
+.rule { display: grid; grid-template-columns: 36px 1fr; gap: 12px; }
+.rule .ico { font-size: 1.4rem; }
+.rule p { color: var(--muted); font-size: .92rem; margin: 4px 0 0; }
+
+footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+
+@media (max-width: 860px) {
+  .pipe, .grid-4 { grid-template-columns: 1fr 1fr; }
+  .grid-3, .grid-2, .avail { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .convo { grid-template-columns: 1fr; }
+  .arrow { transform: rotate(90deg); justify-self: center; }
+}
+@media (max-width: 480px) {
+  .pipe, .grid-4 { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 90px 1fr 32px; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">cinema<span>·</span>recs</div>
+    <nav class="nav">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#perfil">Perfil</a>
+      <a href="#candidatos">Candidatos</a>
+      <a href="#score">Score</a>
+      <a href="#onde">Onde ver</a>
+      <a href="#agora">Pedir agora</a>
+      <a href="#eval">Eval</a>
+      <a href="#regras">Regras</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" aria-label="Alternar tema">◐</button>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Recomendador pessoal de filmes</div>
+    <h1>Do seu <em>Letterboxd</em> ao sofá, sem adivinhação.</h1>
+    <p class="lede">O cinema-recs lê o export do Letterboxd, entende quem fez os filmes que você amou usando o TMDB,
+      transforma isso num perfil de gosto e ranqueia milhares de candidatos — mostrando onde cada um está
+      disponível no streaming brasileiro. Todo o cálculo é determinístico, local e testável.</p>
+    <div class="stats">
+      <div class="stat"><b>711</b><small>filmes vistos no histórico</small></div>
+      <div class="stat"><b>~4.700</b><small>candidatos avaliados</small></div>
+      <div class="stat"><b>100%</b><small>do export casado com o TMDB</small></div>
+      <div class="stat"><b>3–4 s</b><small>por ranking, com cache quente</small></div>
+    </div>
+  </div>
+  <div class="film-strip"></div>
+</div>
+
+<!-- PIPELINE -->
+<section id="pipeline">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><div>
+      <h2>O pipeline</h2>
+      <p class="sec-intro">Cada etapa é um módulo Python e um comando da CLI. Tudo grava num único banco DuckDB, e as
+        tabelas derivadas são recriadas por SQL a partir do JSON bruto — refazer qualquer etapa é barato.
+        Clique numa etapa para ver os detalhes.</p>
+    </div></div>
+
+    <div class="pipe" id="pipe"></div>
+    <div class="card detail" id="detail"></div>
+    <div class="legend-row">
+      <span><i class="dot" style="background:var(--accent)"></i>comando <code>recs …</code></span>
+      <span><i class="dot" style="background:var(--surface-2);border:1px solid var(--line)"></i>tabela gravada no DuckDB</span>
+      <span>borda tracejada = fonte externa</span>
+    </div>
+  </div>
+</section>
+
+<!-- PERFIL -->
+<section id="perfil">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><div>
+      <h2>Perfil de gosto</h2>
+      <p class="sec-intro">Cada filme visto vira um peso relativo à sua própria média. Esse peso é distribuído pelas
+        "features" do filme — diretor, fotógrafo, país, keyword… — e cada feature acumula uma afinidade.</p>
+    </div></div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>1 · Peso de cada filme</h3>
+        <div class="formula">w(filme) = <span class="hl">nota − média_do_usuário</span></div>
+        <ul class="note" style="padding-left:1.1em;margin:0">
+          <li>sem nota → <code>0,1</code> · like → <code>+0,2</code></li>
+          <li>feedback <code>bom</code> (visto fora do Letterboxd) → <code>0,3</code></li>
+        </ul>
+        <h3 style="margin-top:20px">2 · Afinidade de cada feature</h3>
+        <div class="formula">afinidade = Σw / (n + <span class="hl">k</span>)    k = 2</div>
+        <p class="note">O <em>shrinkage</em> puxa para zero quem aparece em poucos filmes. Keywords ainda são
+          multiplicadas por um idf normalizado: uma keyword presente em tudo vale 0.</p>
+
+        <label class="ctl">Filmes vistos do diretor: <b id="nVal">3</b></label>
+        <input type="range" id="nIn" min="1" max="12" value="3">
+        <label class="ctl">Peso médio desses filmes (nota − média): <b id="wVal">+1,0</b></label>
+        <input type="range" id="wIn" min="-20" max="20" value="10">
+        <div class="readout" id="affOut">0,60 <small>de afinidade</small></div>
+        <p class="note" id="affNote"></p>
+      </div>
+
+      <div class="card">
+        <h3>3 · Quanto cada tipo pesa no score</h3>
+        <p class="note">Pesos de <code>config.toml → profile.feature_weights</code>. Quem dirigiu importa muito mais
+          que o gênero.</p>
+        <div class="bars" id="bars"></div>
+        <p class="note" style="margin-top:14px">Pessoas, país e idioma entram pela <b>média</b> no filme (uma
+          antologia com 20 diretores não soma 20 afinidades); keywords entram pela <b>soma</b>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CANDIDATOS -->
+<section id="candidatos">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><div>
+      <h2>De onde vêm os candidatos</h2>
+      <p class="sec-intro">O pool junta quatro fontes, remove duplicatas, filmes já vistos e os marcados como
+        <code>nao</code> ou <code>ja_vi</code>. Um pré-filtro barato evita baixar dados de filmes que seriam descartados.</p>
+    </div></div>
+
+    <div class="grid-4">
+      <div class="card src"><h3>🔗 Vizinhos</h3><p><code>recommendations</code> e <code>similar</code> do TMDB dos
+        filmes com nota ≥ 4 — já vêm no payload.</p><span class="tag">grátis</span></div>
+      <div class="card src b"><h3>🎬 Filmografias</h3><p>Obras dos 25 diretores, 10 fotógrafos e 10 roteiristas com
+        maior afinidade.</p><span class="tag">por afinidade</span></div>
+      <div class="card src c"><h3>📌 Watchlist e 🔖 salvos</h3><p>Isentos dos filtros e com multiplicador
+        <code>×1,3</code> no score.</p><span class="tag">boost</span></div>
+      <div class="card src d"><h3>🌱 Seeds</h3><p>Listas curadas opcionais em <code>seeds/*.csv</code>
+        (<code>name,year</code>). Também isentas.</p><span class="tag">curadoria</span></div>
+    </div>
+
+    <div class="funnel" id="funnel">
+      <div style="width:100%">candidatos no pool <b>4.685</b></div>
+      <div style="width:94%">após pré-filtro (≥ 20 votos, já lançado) e elegíveis <b>4.617</b></div>
+      <div style="width:70%">≥ 60 min, sem curtas, máx. 2 por diretor <b>ranking</b></div>
+      <div style="width:44%">relatório: 20 por lista <b>top 20 + 20</b></div>
+    </div>
+    <p class="note" style="text-align:center;margin-top:8px">Números da execução de 30/09/2026.</p>
+  </div>
+</section>
+
+<!-- SCORE -->
+<section id="score">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><div>
+      <h2>O score</h2>
+      <p class="sec-intro">A afinidade do perfil gera uma base; um fator de popularidade evita que só blockbusters
+        dominem; watchlist e salvos ganham um empurrão.</p>
+    </div></div>
+
+    <div class="formula" style="font-size:1rem">
+      base  = Σ<sub>tipo</sub> peso<sub>tipo</sub> × agg(afinidade)<br>
+      score = base × <span class="hl">1 / (1 + α·ln(1 + votos))</span> × boost
+    </div>
+
+    <div class="grid-2" style="margin-top:16px">
+      <div class="card curve-wrap">
+        <h3>Penalidade de popularidade</h3>
+        <label class="ctl">α (popularity_alpha): <b id="aVal">0,08</b> <span class="note">— valor atual: 0,08, "meio a meio"</span></label>
+        <input type="range" id="aIn" min="0" max="30" value="8">
+        <svg id="curve" viewBox="0 0 400 200" role="img" aria-label="Multiplicador por número de votos"></svg>
+        <p class="note">Eixo x: votos no TMDB (escala log). Eixo y: multiplicador aplicado à base.</p>
+      </div>
+      <div class="card">
+        <h3>Efeito em filmes reais (mesma base)</h3>
+        <p class="note">Quanto sobra do score de um filme conforme sua popularidade.</p>
+        <div class="tbl-wrap">
+        <table class="tbl" id="popTbl">
+          <thead><tr><th>perfil do filme</th><th>votos</th><th>multiplicador</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+        <p class="note" style="margin-top:12px">Mediana de votos do top 20: α 0,15 → ~260 · α 0,08 → ~640 ·
+          α 0,05 → ~1.300. É uma escolha de gosto, não algo a maximizar no eval.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Exemplo de saída — cada sugestão vem com seus motivos</h3>
+      <div class="tbl-wrap" style="margin-top:10px">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>filme</th><th>score</th><th>motivos</th><th>onde</th></tr></thead>
+        <tbody>
+          <tr><td>2</td><td>Diário de uma Camareira <span class="note">(1964)</span></td><td class="mono">4.55</td><td>diretor: Luis Buñuel · keyword: society · idioma: French</td><td>Looke, NetMovies</td></tr>
+          <tr><td>5</td><td>Caçador de Assassinos <span class="note">(1986)</span></td><td class="mono">3.78</td><td>diretor: Michael Mann · fotografia: Dante Spinotti</td><td>Looke, Oldflix</td></tr>
+          <tr><td>10</td><td>Meu Amigo Totoro 📌 <span class="note">(1988)</span></td><td class="mono">3.26</td><td>diretor: Hayao Miyazaki · país: Japan · idioma: Japanese</td><td><b>Netflix</b></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="note" style="margin-top:10px">Trecho de <code>reports/2026-09-30.md</code>. 📌 = watchlist; serviços assinados em negrito.
+        Disponibilidade histórica, não uma consulta atual.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ONDE VER -->
+<section id="onde">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><div>
+      <h2>Onde assistir no Brasil</h2>
+      <p class="sec-intro">Os dados do JustWatch chegam via TMDB, região BR, com cache de 7 dias. O relatório separa
+        o que dá para ver agora do que vale explorar.</p>
+    </div></div>
+
+    <div class="avail">
+      <div class="card lane">
+        <h3>▶ Disponível no streaming BR</h3>
+        <p class="note">Assinatura (<code>flatrate</code>), grátis (<code>free</code>) ou com anúncios (<code>ads</code>).</p>
+        <div class="chips">
+          <span class="chip sub">Netflix</span><span class="chip sub">Amazon Prime Video</span><span class="chip sub">HBO Max</span>
+          <span class="chip sub">Disney Plus</span><span class="chip sub">Apple TV</span><span class="chip sub">MUBI</span>
+          <span class="chip">Globoplay</span><span class="chip">Looke</span><span class="chip">…</span>
+        </div>
+        <p class="note" style="margin-top:12px">Em destaque: os serviços assinados (<code>provedores_assinados</code>).</p>
+      </div>
+      <div class="card lane">
+        <h3>🧭 Para explorar</h3>
+        <p class="note">Todo o resto: aluguel/compra (<code>rent</code>, <code>buy</code>) ou nenhuma oferta conhecida.</p>
+        <h3 style="margin-top:16px;font-size:1rem">Normalizações</h3>
+        <div class="chips">
+          <span class="chip">"Netflix Standard with Ads" → Netflix</span>
+          <span class="chip no">HBO Max Amazon Channel ≠ HBO Max</span>
+        </div>
+        <p class="note" style="margin-top:12px">Canais dentro da Amazon são assinaturas à parte e <b>não</b> contam como o serviço assinado.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AGORA -->
+<section id="agora">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><div>
+      <h2>Pedir um filme para agora</h2>
+      <p class="sec-intro">No modo <code>recs now</code>, o contexto define o recorte e o perfil define a ordem.
+        Um agente (Codex ou Claude) traduz o pedido em português para flags; o <code>recs</code> continua
+        determinístico — não há chamada a modelo de linguagem no pipeline Python.</p>
+    </div></div>
+
+    <div class="convo">
+      <div class="card">
+        <div class="who">Você</div>
+        <div class="bubble">Quero uma comédia policial para hoje, até 110 minutos, nada pesado, nos meus streamings.</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card">
+        <div class="who">Agente → CLI</div>
+<pre><span class="k">uv run recs now</span> \
+  -g comedia -g crime \
+  --all-genres \
+  --max-runtime <span class="s">110</span> \
+  --subscribed-only \
+  --avoid <span class="s">"gore,torture"</span> \
+  --json</pre>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card">
+        <div class="who">3–5 opções, com motivo e onde ver</div>
+        <div class="result">
+          <div class="film"><div class="poster"></div><div><b>Filme A</b><span>diretor que você ama · Netflix</span></div></div>
+          <div class="film"><div class="poster" style="opacity:.75"></div><div><b>Filme B</b><span>keyword preferida ×1,25 · MUBI</span></div></div>
+          <div class="film"><div class="poster" style="opacity:.5"></div><div><b>Filme C</b><span>fotógrafo em comum · HBO Max</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top:16px">
+      <div class="card"><h3>➕ Pool ampliado</h3><p class="note">Os candidatos de sempre + <code>/discover/movie</code>
+        com os mesmos filtros, ordenado por nota (piso de 300 votos) e por popularidade, até 3 páginas cada.</p></div>
+      <div class="card"><h3>🚧 Filtros rígidos</h3><p class="note">Gênero, duração, idioma, país, anos e keywords
+        evitadas eliminam o filme. <code>--avoid gore</code> elimina também "extreme gore".</p></div>
+      <div class="card"><h3>🔁 Refinar e lembrar</h3><p class="note">"Mais curto", "esse já vimos" mantém as restrições
+        anteriores. <code>recs salvar</code> e <code>recs feedback bom|nao|ja_vi</code> gravam em <code>overrides/</code>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- EVAL -->
+<section id="eval">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><div>
+      <h2>Como saber se está bom: eval por holdout</h2>
+      <p class="sec-intro">Para cada seed (1 a 5), o <code>recs eval</code> esconde 15% dos filmes com nota ≥ 4,5,
+        refaz perfil, candidatos e score como se nunca tivessem sido vistos, e mede se o sistema os recupera.
+        Nenhum peso do <code>config.toml</code> muda sem um eval comparativo.</p>
+    </div></div>
+
+    <div class="card">
+      <div class="note">Seus filmes com nota alta · <span style="color:var(--teal)">■ escondidos</span> ·
+        <span style="color:var(--accent)">■ reencontrados no top 50</span></div>
+      <div class="holdout" id="holdout"></div>
+      <div class="grid-4">
+        <div class="metric"><b>37%</b><span>recall de candidatos — escondidos que voltaram ao pool</span></div>
+        <div class="metric"><b>3,8%</b><span>hit@20 — no top 20 após limite por diretor</span></div>
+        <div class="metric"><b>6,7%</b><span>hit@50</span></div>
+        <div class="metric"><b>640</b><span>mediana de votos do top 20</span></div>
+      </div>
+      <p class="note" style="margin-top:14px">Linha de base <code>baseline-v2 alpha 0.08</code>. O gargalo é o pool:
+        as <code>recommendations</code> do TMDB não alcançam vários clássicos. E como filmes amados tendem a ser
+        populares, o eval favorece rankings mainstream — por isso α é decidido por gosto.</p>
+    </div>
+  </div>
+</section>
+
+<!-- REGRAS -->
+<section id="regras">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">08</span><div>
+      <h2>Princípios do projeto</h2>
+    </div></div>
+    <div class="grid-2">
+      <div class="card rule"><div class="ico">🚫</div><div><h3>Sem scraping do Letterboxd</h3>
+        <p>A única entrada é o ZIP exportado manualmente em Settings → Import &amp; Export. Nada de RSS ou acesso ao site.</p></div></div>
+      <div class="card rule"><div class="ico">🧮</div><div><h3>Ranking determinístico</h3>
+        <p>O modelo de linguagem só interpreta o pedido e explica a saída; quem ordena é a CLI, testada com dados sintéticos.</p></div></div>
+      <div class="card rule"><div class="ico">💾</div><div><h3>Cache agressivo</h3>
+        <p>Metadados por 90 dias, provedores por 7. Cada filme custa uma chamada, e o payload é enxugado de ~115 KB para ~11 KB.</p></div></div>
+      <div class="card rule"><div class="ico">🔐</div><div><h3>Dados pessoais locais</h3>
+        <p>Banco, export, feedback e salvos ficam na máquina. A chave do TMDB vive só no <code>.env</code>, fora do git.</p></div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><b>cinema-recs</b> · Python 3.12 · uv · Typer · DuckDB · httpx assíncrono. Detalhes em
+      <code>docs/ARQUITETURA.md</code> e <code>USO.md</code>.</p>
+    <p>Dados de filmes: TMDB. Dados de streaming: JustWatch.</p>
+  </div>
+</footer>
+
+<script>
+// ---- tema
+(function () {
+  const btn = document.getElementById('themeBtn');
+  const root = document.documentElement;
+  try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch (e) {}
+  btn.addEventListener('click', () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark'
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+  });
+})();
+
+const fmt = (x, d = 2) => x.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// ---- pipeline
+const stages = [
+  { ico: '📦', name: 'Export Letterboxd', cmd: 'recs ingest', mod: 'ingest.py', out: 'lb_films', desc: 'ZIP manual: vistos, notas, watchlist, likes.',
+    det: ['Lê <code>watched</code>, <code>ratings</code>, <code>watchlist</code>, <code>likes/films</code>, <code>diary</code> e <code>reviews</code>.',
+          'Os quatro primeiros são chaveados pela URI do filme (<code>boxd.it/…</code>); diário e resenhas entram por (nome, ano), porque a URI aponta para a entrada, não para o filme.'], ext: true },
+  { ico: '🎯', name: 'Matching', cmd: 'recs match', mod: 'match.py', out: 'film_map', desc: 'Letterboxd → tmdb_id.',
+    det: ['Títulos normalizados: unidecode, caixa baixa, <code>&amp;</code>→and, sem pontuação e sem artigo inicial.',
+          '<b>Estrita:</b> título idêntico e ano ±1; empates decididos por votos (≥ 5× e +50) ou marcados como ambíguos.',
+          '<b>Ampliada:</b> ano ±1, sem ano, prefixo antes de <code>:</code>. <b>Fuzzy:</b> 0,7·título + 0,3·ano ≥ 0,85, margem ≥ 0,03.',
+          '<code>overrides/matches.csv</code> sempre vence; o resto vai para <code>unmatched.csv</code>. Última execução: 710/710.'] },
+  { ico: '🌐', name: 'Enriquecimento', cmd: 'recs enrich', mod: 'enrich.py · tmdb.py', out: 'tmdb_raw, film_*', desc: 'Uma chamada /movie/{id} por filme.',
+    det: ['<code>append_to_response</code> traz créditos, keywords, recomendações, similares, provedores e traduções num só pedido.',
+          '<code>slim()</code> corta outras regiões, outras línguas, equipe irrelevante e elenco após o 10º: ~115 KB → ~11 KB.',
+          '20 requisições simultâneas, backoff exponencial em 429/5xx respeitando <code>Retry-After</code>.',
+          'Deriva <code>film_meta</code>, <code>film_genres</code>, <code>film_keywords</code>, <code>film_people</code> e outras por SQL.'], ext: true },
+  { ico: '🧬', name: 'Perfil de gosto', cmd: 'recs profile', mod: 'profile.py', out: 'profile_features', desc: 'Afinidade por diretor, país, keyword…',
+    det: ['Peso por filme: nota − sua média (sem nota 0,1; like +0,2; feedback bom 0,3).',
+          'Afinidade = Σw / (n + 2), com idf normalizado para keywords. Veja a seção 02.'] },
+  { ico: '🗂️', name: 'Candidatos', cmd: 'recs recommend', mod: 'candidates.py', out: 'candidates', desc: 'Vizinhos, filmografias, watchlist, seeds.',
+    det: ['Junta recomendações/similares dos filmes ≥ 4, filmografias das pessoas com mais afinidade, watchlist, salvos e seeds.',
+          'Remove vistos e feedback <code>nao</code>/<code>ja_vi</code>; pré-filtro de votos ≥ 20 e já lançado.'] },
+  { ico: '⚖️', name: 'Score', cmd: 'recs recommend', mod: 'score.py', out: 'scores, contributions', desc: 'Afinidade × popularidade × boost.',
+    det: ['Soma ponderada das afinidades (média para pessoas/país/idioma, soma para keywords).',
+          'Penalidade de popularidade com α = 0,08; boost 1,3 para watchlist e salvos.',
+          'Guarda as contribuições para explicar os 3 principais motivos; máx. 2 filmes por diretor.'] },
+  { ico: '📺', name: 'Disponibilidade', cmd: 'recs recommend', mod: 'availability.py', out: 'BR', desc: 'Streaming × explorar.',
+    det: ['JustWatch via TMDB, região BR, cache de 7 dias.', 'Streaming = flatrate, free, ads; explorar = rent, buy ou nada.',
+          'Remove sufixo "with Ads"; canais Amazon não contam como o serviço assinado.'], ext: true },
+  { ico: '📝', name: 'Saída', cmd: 'recommend · now', mod: 'report.py · context.py', out: 'reports/*.md, JSON', desc: 'Relatório ou sugestões do momento.',
+    det: ['<code>recs recommend</code> grava <code>reports/AAAA-MM-DD.md</code> com duas listas de 20.',
+          '<code>recs now --json</code> devolve opções filtradas para o agente apresentar na conversa (<code>schema_version: 1</code>).'] },
+];
+const pipe = document.getElementById('pipe');
+const detail = document.getElementById('detail');
+function show(i) {
+  const s = stages[i];
+  [...pipe.children].forEach((b, j) => b.setAttribute('aria-pressed', j === i));
+  detail.innerHTML = `<h3>${s.ico} ${s.name} <span class="note mono">· ${s.mod}</span></h3><ul>${s.det.map(d => `<li>${d}</li>`).join('')}</ul>`;
+}
+stages.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.className = 'stage' + (s.ext ? ' ext' : '');
+  b.innerHTML = `<span class="ico">${s.ico}</span><span class="cmd">${String(i + 1).padStart(2, '0')} · ${s.cmd}</span><h3>${s.name}</h3><p>${s.desc}</p><span class="out">${s.out}</span>`;
+  b.addEventListener('click', () => show(i));
+  pipe.appendChild(b);
+});
+show(0);
+
+// ---- pesos
+const weights = [['diretor', 3.0], ['roteiro', 1.5], ['fotografia', 1.5], ['país', 1.0], ['idioma', 1.0], ['keyword', 1.0],
+  ['montagem', 0.8], ['trilha', 0.5], ['década', 0.5], ['gênero', 0.3]];
+document.getElementById('bars').innerHTML = weights.map(([k, v]) =>
+  `<div class="bar-row"><span>${k}</span><div class="bar-track"><div class="bar-fill" style="width:${v / 3 * 100}%"></div></div><span class="v">${fmt(v, 1)}</span></div>`).join('');
+
+// ---- shrinkage
+const nIn = document.getElementById('nIn'), wIn = document.getElementById('wIn');
+function aff() {
+  const n = +nIn.value, w = +wIn.value / 10;
+  const a = n * w / (n + 2);
+  document.getElementById('nVal').textContent = n;
+  document.getElementById('wVal').textContent = (w > 0 ? '+' : '') + fmt(w, 1);
+  document.getElementById('affOut').innerHTML = `${fmt(a)} <small>de afinidade</small>`;
+  document.getElementById('affNote').textContent =
+    `Sem shrinkage seria ${fmt(w)}. Com ${n} filme${n > 1 ? 's' : ''}, a confiança é ${Math.round(n / (n + 2) * 100)}% do valor bruto.`;
+}
+nIn.oninput = wIn.oninput = aff; aff();
+
+// ---- popularidade
+const aIn = document.getElementById('aIn');
+const examples = [['nicho', 25], ['cult', 300], ['mediana top 20', 640], ['conhecido', 5000], ['blockbuster', 35000]];
+const mult = (a, v) => 1 / (1 + a * Math.log(1 + v));
+function curve() {
+  const a = +aIn.value / 100;
+  document.getElementById('aVal').textContent = fmt(a);
+  const W = 400, H = 200, L = 34, B = 24, T = 10, R = 10;
+  const xs = v => L + (Math.log10(v) - 1) / 4 * (W - L - R);
+  const ys = m => T + (1 - m) * (H - T - B);
+  let d = '';
+  for (let i = 0; i <= 80; i++) { const v = 10 ** (1 + i / 20); d += (i ? 'L' : 'M') + xs(v).toFixed(1) + ' ' + ys(mult(a, v)).toFixed(1); }
+  let g = '';
+  [0, .25, .5, .75, 1].forEach(m => g += `<line x1="${L}" x2="${W - R}" y1="${ys(m)}" y2="${ys(m)}" stroke="var(--line)"/><text x="${L - 6}" y="${ys(m) + 4}" text-anchor="end">${fmt(m, 2)}</text>`);
+  [10, 100, 1000, 10000, 100000].forEach(v => g += `<text x="${xs(v)}" y="${H - 6}" text-anchor="middle">${v >= 1000 ? v / 1000 + 'k' : v}</text>`);
+  const p = examples.map(([, v]) => `<circle cx="${xs(v)}" cy="${ys(mult(a, v))}" r="4" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`).join('');
+  document.getElementById('curve').innerHTML = g + `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>` + p;
+  document.querySelector('#popTbl tbody').innerHTML = examples.map(([k, v]) => {
+    const m = mult(a, v);
+    return `<tr><td>${k}</td><td class="mono">${v.toLocaleString('pt-BR')}</td><td><div class="bar-track" style="display:inline-block;width:70px;vertical-align:middle;margin-right:8px"><div class="bar-fill" style="width:${m * 100}%"></div></div><span class="mono">${fmt(m)}</span></td></tr>`;
+  }).join('');
+}
+aIn.oninput = curve; curve();
+
+// ---- holdout ilustrativo
+const ho = document.getElementById('holdout');
+let html = '';
+for (let i = 0; i < 80; i++) html += `<i class="${i % 7 === 3 ? (i === 10 ? 'f' : 'h') : ''}"></i>`;
+ho.innerHTML = html;
+</script>
+</body>
+</html>

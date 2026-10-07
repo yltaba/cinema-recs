@@ -54,3 +54,30 @@ def test_summarize_and_previous(con):
     evaluate.save(con, "outro", 0.15, CFG, rs[:1])
     assert evaluate.previous(con, 0.15)[0].startswith("outro")
     assert evaluate.previous(con, 0.15, "baseline")[0].startswith("baseline")
+
+
+def test_ndcg_mrr_and_diversity_known_ranking():
+    import math
+    rows = [{"tmdb_id": i, "director_ids": [d]} for i, d in [(1, 1), (2, 1), (3, 2)]]
+    metrics = evaluate.ranking_metrics(rows, {2, 3})
+    assert metrics["mrr50"] == 0.5
+    assert metrics["ndcg20"] == pytest.approx((1 / math.log2(3) + 0.5) / (1 + 1 / math.log2(3)))
+    assert metrics["director_diversity20"] == pytest.approx(2 / 3)
+    assert evaluate.ranking_metrics([], {2})["director_diversity20"] is None
+    assert evaluate.ranking_metrics(rows, set())["ndcg20"] == 0
+
+
+def test_old_eval_schema_preserved_and_extended(con):
+    con.execute("CREATE TABLE eval_runs(run_at TIMESTAMP, label TEXT, holdout DOUBLE, seed INTEGER, n_holdout INTEGER, "
+                "cand_recall DOUBLE, hit20 DOUBLE, hit50 DOUBLE, median_votes_top20 DOUBLE, config JSON)")
+    con.execute("INSERT INTO eval_runs VALUES ('2020-01-01', 'old', 0.15, 1, 3, 0.5, 0.1, 0.2, 100, '{}')")
+    assert evaluate.previous(con, 0.15)[1]["ndcg20"] is None
+    evaluate.save(con, "new", 0.15, CFG, [SeedResult(1, 3, 1, 1, 1, 100, ndcg20=1, mrr50=1)])
+    assert con.execute("SELECT count(*) FROM eval_runs").fetchone()[0] == 2
+    assert evaluate.previous(con, 0.15)[1]["ndcg20"] == 1
+
+
+def test_empty_holdout_and_invalid_fraction(con):
+    assert evaluate.holdout_ids(con, 6, 0.15, 1) == []
+    with pytest.raises(ValueError):
+        evaluate.holdout_ids(con, 4.5, 1.2, 1)

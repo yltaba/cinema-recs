@@ -80,3 +80,24 @@ def test_exclude_and_feedback(con):
     assert 1 not in w
     assert w[5] == pytest.approx(0.3)
     assert w[2] == pytest.approx(4 - 3.0)  # média recalculada sem o filme excluído
+
+
+def test_profile_json_contains_identifiable_evidence(con):
+    profile.build(con, CFG)
+    packet = profile.explain(con, {"profile": {**CFG["profile"], "feature_weights": {"director": 3}}}, ["director"])
+    director = next(f for f in packet["features"] if f["id"] == "10")
+    assert director["n"] == 2 and director["peso_tipo"] == 3
+    assert {f["tmdb_id"] for f in director["evidencias"]} == {1, 2}
+    assert packet["resumo"]["filmes"] == 4
+
+
+def test_single_film_profile_does_not_generate_nan(con):
+    profile.build(con, CFG, exclude={2, 3, 4})
+    assert aff(con, "keyword", 1)[0] == 0
+
+
+def test_disliked_and_not_interested_do_not_invent_negative_affinity(con):
+    profile.build(con, CFG)
+    before = con.execute("SELECT * FROM profile_features ORDER BY feature_type, feature_id").fetchall()
+    profile.build(con, CFG, feedback={5: "disliked", 6: "not_interested"})
+    assert con.execute("SELECT * FROM profile_features ORDER BY feature_type, feature_id").fetchall() == before

@@ -15,7 +15,8 @@ import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
                   enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
-                  profile as profile_mod, report as report_mod, saved as saved_mod, score as score_mod)
+                  profile as profile_mod, report as report_mod, saved as saved_mod, score as score_mod,
+                  pipeline as pipeline_mod, interactions, feedback as feedback_mod)
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, pretty_exceptions_show_locals=False,
@@ -162,12 +163,16 @@ def profile(
     type: list[str] = typer.Option(None, "--type", "-t", help="Tipos a mostrar (padrão: todos)"),
     n: int = typer.Option(15, help="Quantas features no topo"),
     bottom: int = typer.Option(5, help="Quantas features com afinidade mais negativa"),
+    as_json: bool = typer.Option(False, "--json", help="Perfil e evidências estruturados"),
 ):
     """Monta o perfil de gosto e imprime o top N por tipo de feature."""
     cfg = config.load()
     con = db.connect()
     feedback = profile_mod.load_feedback(config.root() / "overrides" / "feedback.csv")
     profile_mod.build(con, cfg, feedback=feedback)
+    if as_json:
+        typer.echo(json.dumps(profile_mod.explain(con, cfg, type, n, bottom), ensure_ascii=False, allow_nan=False))
+        return
     films, rated, mean, liked, wmin, wmax = profile_mod.summary(con)
     console.print(f"[bold]Perfil:[/] {films} filmes · {rated} com nota (média {mean}) · {liked} likes · "
                   f"w ∈ [{wmin}, {wmax}] · k = {cfg['profile']['shrinkage_k']}")
@@ -191,72 +196,18 @@ def profile(
 
 
 @app.command()
-def recommend(n: int = typer.Option(20, help="Quantos filmes por classe")):
-    """Gera candidatos, pontua, classifica por disponibilidade no BR e escreve reports/AAAA-MM-DD.md."""
-    cfg = config.load()
-    root = config.root()
-    con = db.connect()
-    feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
-    profile_mod.build(con, cfg, feedback=feedback)
-    exclude = cand_mod.seen_ids(con) | {i for i, v in feedback.items() if v in ("ja_vi", "nao")}
-    subscribed = cfg["availability"]["provedores_assinados"]
-    t0 = time.perf_counter()
-
-    async def run():
-        async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
-            pool = await cand_mod.generate(con, tmdb, cfg, exclude, root / "seeds")
-            cand_mod.save(con, pool)
-            st = await enrich_mod.fetch_movies(con, tmdb, list(pool.sources), cfg["tmdb"]["metadata_ttl_days"],
-                                              region=cfg["availability"]["region"])
-            if st.fetched:
-                enrich_mod.derive(con)
-                profile_mod.build_film_features(con)
-            score_mod.compute(con, cfg)
-            meta_calls = tmdb.calls
-            # Provedores só para o topo do ranking, com folga para a diversidade e as duas classes.
-            top = score_mod.ranked(con, max(15 * n, 300))
-            prov = await avail_mod.fetch(con, tmdb, [r["tmdb_id"] for r in top], cfg)
-            return pool, st, top, prov, meta_calls, tmdb.calls - meta_calls
-
-    with console.status("Gerando recomendações..."):
-        pool, st, top, prov, meta_calls, prov_calls = asyncio.run(run())
-
-    for r in top:
-        r["availability"] = avail_mod.classify(prov.get(r["tmdb_id"]), subscribed)
-    max_dir = cfg["score"]["max_per_director"]
-    available = score_mod.diversify([r for r in top if r["availability"].available], n, max_dir)
-    explore = score_mod.diversify([r for r in top if not r["availability"].available], n, max_dir)
-    for r in available + explore:
-        r["reasons"] = score_mod.reasons(con, r["tmdb_id"])
-
-    src_counts = Counter(s.split(":")[0] if s.startswith("seed") else s for srcs in pool.sources.values() for s in srcs)
-    eligible = con.execute("SELECT count(*) FILTER (eligible), count(*) FROM scores").fetchone()
-    console.print(f"[bold]Candidatos:[/] {len(pool.sources)} · elegíveis: {eligible[0]} · por fonte: "
-                  + ", ".join(f"{k} {v}" for k, v in src_counts.most_common()))
-    console.print(f"Enriquecimento: {st.cached} em cache, {st.fetched} baixados · requisições de metadados: "
-                  f"{meta_calls} · de provedores: {prov_calls} · {time.perf_counter() - t0:.1f}s")
-
-    for title, rows in (("Disponível no streaming BR", available), ("Para explorar", explore)):
-        t = Table(title=title, title_justify="left", expand=True)
-        for c, kw in (("#", {"justify": "right"}), ("tmdb", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}), ("diretor", {"ratio": 2}),
-                      ("score", {"justify": "right"}), ("motivos", {"ratio": 4}), ("onde", {"ratio": 2})):
-            t.add_column(c, **kw)
-        for i, r in enumerate(rows, 1):
-            a = r["availability"]
-            where = ", ".join(f"[bold green]{p}[/]" if p in a.subscribed else p for p in a.streaming)                 if a.available else ("aluguel/compra" if a.rent_buy else "—")
-            t.add_row(str(i), str(r["tmdb_id"]), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
-                      f"{r['score']:.2f}", report_mod.reasons_text(r["reasons"]), where)
-        console.print(t)
-
-    path = root / "reports" / f"{date.today()}.md"
-    report_mod.write(path, available, explore, {
-        "profile_films": profile_mod.summary(con)[0], "candidates": len(pool.sources), "eligible": eligible[0]})
-    console.print(f"Relatório: {path.relative_to(root)}")
-    console.print(report_mod.ATTRIBUTION)
+def recommend(cli_context: typer.Context, n: int = typer.Option(20, min=1, help="Quantos filmes")):
+    """Compatibilidade: exploração geral com relatório Markdown."""
+    now(cli_context=cli_context, n=n, genre=None, all_genres=False, max_runtime=None, min_runtime=None, language=None,
+        country=None, years=None, prefer=None, avoid=None, subscribed_only=False,
+        streaming_only=False, exclude=None, as_json=False,
+        markdown=config.root() / "reports" / f"{date.today()}.md", provider=None)
 
 
+@app.command("explore")
 @app.command()
 def now(
+    cli_context: typer.Context,
     genre: list[str] = typer.Option(None, "--genre", "-g", help="Gênero(s), pt ou en; vários = qualquer um"),
     all_genres: bool = typer.Option(False, "--all-genres", help="Exige todos os gêneros (comédia + policial)"),
     max_runtime: int = typer.Option(None, help="Duração máxima em minutos"),
@@ -268,77 +219,62 @@ def now(
     avoid: list[str] = typer.Option(None, help="Termos de keyword que eliminam o filme ('gore' pega 'extreme gore')"),
     subscribed_only: bool = typer.Option(False, "--subscribed-only", help="Só nos serviços assinados"),
     streaming_only: bool = typer.Option(False, "--streaming-only", help="Só em streaming no BR (qualquer serviço)"),
+    provider: list[str] = typer.Option(None, help="Só nestes serviços, pelo nome exato; vários = qualquer um"),
     exclude: list[str] = typer.Option(None, help="tmdb_ids a pular só nesta consulta"),
-    n: int = typer.Option(None, help="Quantos filmes (padrão: config now.n)"),
+    n: int = typer.Option(None, min=1, help="Quantos filmes (padrão: config now.n)"),
+    markdown: Path = typer.Option(None, help="Grava também um relatório Markdown neste caminho"),
     as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
 ):
-    """Recomendações para o momento: o perfil decide a ordem, o contexto decide o recorte."""
+    """Recomendações pessoais; filtros opcionais e streaming como metadado por padrão."""
     cfg = config.load()
     root = config.root()
     n = n or cfg["now"]["n"]
     try:
         ctx = context_mod.build(genre, max_runtime, min_runtime, language, country, years, prefer, avoid,
-                                subscribed_only, streaming_only, exclude, all_genres)
+                                subscribed_only, streaming_only, exclude, all_genres, provider)
     except ValueError as e:
         raise typer.BadParameter(str(e))
     con = db.connect()
     feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
     profile_mod.build(con, cfg, feedback=feedback)
-    seen = cand_mod.seen_ids(con) | {i for i, v in feedback.items() if v in ("ja_vi", "nao")}
-    subscribed = cfg["availability"]["provedores_assinados"]
     t0 = time.perf_counter()
 
     async def run():
         async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
-            pool = await cand_mod.generate(con, tmdb, cfg, seen, root / "seeds")
-            discovered = await context_mod.discover(tmdb, ctx, cfg) - seen
-            for i in discovered:
-                pool.add(i, "discover")
-            cand_mod.save(con, pool)
-            st = await enrich_mod.fetch_movies(con, tmdb, list(pool.sources), cfg["tmdb"]["metadata_ttl_days"],
-                                              region=cfg["availability"]["region"])
-            if st.fetched:
-                enrich_mod.derive(con)
-                profile_mod.build_film_features(con)
-            score_mod.compute(con, cfg)
-            avoid_kw = context_mod.keyword_ids(con, ctx.avoid_keywords, whole_word=True)
-            prefer_kw = context_mod.keyword_ids(con, ctx.prefer_keywords, whole_word=False)
-            hits = context_mod.matching(con, ctx, sorted(avoid_kw), sorted(prefer_kw))
-            top = context_mod.rerank(score_mod.ranked(con, 3000, only="context_ok"), hits,
-                                     cfg["now"]["prefer_bonus"])[:max(25 * n, 200)]
-            prov = await avail_mod.fetch(con, tmdb, [r["tmdb_id"] for r in top], cfg)
-            return len(discovered), st, top, prov, avoid_kw, prefer_kw, tmdb.calls
+            rows, diagnostic, warnings = await pipeline_mod.query(con, tmdb, cfg, ctx, n, root, feedback)
+            return rows, diagnostic, warnings, tmdb.calls
 
     status = contextlib.nullcontext() if as_json else console.status("Buscando...")
     with status:
-        n_disc, st, top, prov, avoid_kw, prefer_kw, calls = asyncio.run(run())
+        rows, diagnostic, warnings, calls = asyncio.run(run())
 
-    for r in top:
-        r["availability"] = avail_mod.classify(prov.get(r["tmdb_id"]), subscribed)
-    if ctx.subscribed_only:
-        top = [r for r in top if r["availability"].subscribed]
-    elif ctx.streaming_only:
-        top = [r for r in top if r["availability"].available]
-    rows = score_mod.diversify(top, n, cfg["score"]["max_per_director"])
-    genres = dict(con.execute("SELECT tmdb_id, list(name ORDER BY name) FROM film_genres GROUP BY 1").fetchall())
-    for r in rows:
-        r["reasons"] = score_mod.reasons(con, r["tmdb_id"])
-        r["genres"] = genres.get(r["tmdb_id"], [])
-    warnings = context_mod.warnings(ctx, avoid_kw, prefer_kw, len(rows), n)
+    interaction_id = interactions.record_query(con, cli_context.info_name,
+                                               {**pipeline_mod.structured_context(ctx), "n": n}, rows, diagnostic, cfg)
+
+    if markdown:
+        report_mod.write_explore(markdown, rows, diagnostic)
 
     if as_json:
         out = {
             "schema_version": 1,
+            "interaction_id": interaction_id,
             "contexto": ctx.describe(),
+            "consulta": {**pipeline_mod.structured_context(ctx), "n": n},
+            "diagnostico": diagnostic,
             "filmes": [{
                 "tmdb_id": r["tmdb_id"], "titulo": r["title"], "titulo_original": r["original_title"],
                 "ano": r["year"], "diretor": r["directors"], "duracao": r["runtime"], "generos": r["genres"],
+                "score_pessoal": round(r["base"], 3), "fontes": r["sources"],
                 "score": round(r["score"], 3), "score_contexto": round(r["context_score"], 3),
+                "ajustes": {"popularidade": r["pop_penalty"], "watchlist_salvos": r["boost"]},
                 "motivos": [f"{t}: {label}" for t, label, _ in r["reasons"]],
+                "motivos_detalhados": [{"tipo": t, "nome": label, "contribuicao": contribution}
+                                        for t, label, contribution in r["reasons"]],
                 "keywords_preferidas": r["prefer_hits"],
                 "watchlist": "watchlist" in (r["sources"] or []), "salvo": "salvo" in (r["sources"] or []),
                 "assinados": r["availability"].subscribed, "streaming": r["availability"].streaming,
                 "aluguel_compra": r["availability"].rent_buy,
+                "disponibilidade_conhecida": r["availability"].known,
             } for r in rows],
             "avisos": warnings,
             "atribuicao": report_mod.ATTRIBUTION,
@@ -347,7 +283,7 @@ def now(
         return
 
     console.print(f"[bold]Contexto:[/] {ctx.describe()}")
-    console.print(f"Pool: {st.requested} candidatos ({n_disc} via discover) · {len(top)} passam nos filtros · "
+    console.print(f"Pool: {diagnostic['retrieved']} candidatos · {diagnostic['context_matched']} passam nos filtros · "
                   f"requisições: {calls} · {time.perf_counter() - t0:.1f}s")
     t = Table(expand=True)
     for c, kw in (("#", {"justify": "right"}), ("tmdb", {"justify": "right"}), ("filme", {"ratio": 3}), ("ano", {}),
@@ -374,12 +310,18 @@ def salvar(
     tmdb_ids: list[int] = typer.Argument(..., help="Ids TMDB (coluna tmdb)"),
     contexto: str = typer.Option("", help="Nota livre: o pedido que gerou a sugestão"),
     as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
+    interaction: str = typer.Option(None, help="Interação que apresentou as opções"),
 ):
     """Guarda filmes na lista local "para ver" (overrides/salvos.csv)."""
     con = db.connect()
+    try:
+        interactions.validate_action(con, interaction, tmdb_ids)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
     titles = dict(con.execute("SELECT tmdb_id, title FROM film_meta").fetchall())
     new = saved_mod.add(config.root() / "overrides" / "salvos.csv",
                         [(i, titles.get(i, "")) for i in tmdb_ids], contexto)
+    interactions.record_action(con, "saved", tmdb_ids, interaction, {"contexto": contexto, "new": new})
     if as_json:
         typer.echo(json.dumps({"schema_version": 1, "salvos": new,
                                "ja_salvos": list(dict.fromkeys(i for i in tmdb_ids if i not in new))},
@@ -485,38 +427,64 @@ def eval_(
     console.print(t)
     if prev:
         console.print(f"Comparado com: {prev[0]}")
+    for metric in eval_mod.METRICS[4:]:
+        mean, std = summ[metric]
+        if mean is None:
+            console.print(f"{metric}: sem evidência suficiente")
+            continue
+        delta = f" · Δ {mean - prev[1][metric]:+.3f}" if prev and prev[1].get(metric) is not None else ""
+        console.print(f"{metric}: {mean:.3f} ± {std:.3f}{delta}")
     console.print(f"Requisições TMDB: {calls} · {time.perf_counter() - t0:.1f}s · "
                   "tabelas de perfil/candidatos ficaram no estado do último seed; rode `recs recommend` para refazê-las")
 
 
-VERDICTS = ("bom", "nao", "ja_vi")
+VERDICTS = feedback_mod.VERDICTS
 
 
 @app.command()
 def feedback(
-    tmdb_id: int = typer.Argument(..., help="Id TMDB (coluna tmdb do recommend)"),
-    veredito: str = typer.Argument(..., help="bom | nao | ja_vi"),
-    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
+    tmdb_id: int = typer.Argument(...),
+    veredito: str = typer.Argument(..., help="liked | disliked | not_interested | already_seen | not_now (aliases: bom, nao, ja_vi)"),
+    as_json: bool = typer.Option(False, "--json"),
+    interaction: str = typer.Option(None),
 ):
-    """Registra um veredito em overrides/feedback.csv (o último por filme vale)."""
+    """Registra feedback persistente ou uma exclusao contextual ligada a interacao."""
     if veredito not in VERDICTS:
         raise typer.BadParameter(f"use um de: {', '.join(VERDICTS)}", param_hint="veredito")
-    path = config.root() / "overrides" / "feedback.csv"
-    row = db.connect().execute("SELECT title, year FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new = not path.exists() or path.stat().st_size == 0
-    with open(path, "a", encoding="utf-8", newline="") as f:
-        if new:
-            f.write("tmdb_id,veredito,data\n")
-        f.write(f"{tmdb_id},{veredito},{date.today()}\n")
-    name = f"{row[0]} ({row[1]})" if row else f"tmdb {tmdb_id} (fora do cache)"
-    effect = {"bom": "entra no perfil com peso positivo", "nao": "sai das recomendações",
-              "ja_vi": "sai das recomendações"}[veredito]
+    canonical = feedback_mod.normalize(veredito)
+    if canonical == "not_now" and not interaction:
+        raise typer.BadParameter("not_now requer --interaction; para busca avulsa use --exclude")
+    con = db.connect()
+    try:
+        interactions.validate_action(con, interaction, [tmdb_id])
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    if canonical != "not_now":
+        feedback_mod.append(config.root() / "overrides" / "feedback.csv", tmdb_id, canonical)
+    interactions.record_action(con, canonical, [tmdb_id], interaction)
+    effect = {"liked": "entra no perfil com peso positivo e sai das sugestoes",
+              "disliked": "visto; sai das sugestoes, sem aprender afinidade negativa ainda",
+              "not_interested": "sai das sugestoes sem alterar afinidades",
+              "already_seen": "sai das sugestoes como assistido",
+              "not_now": "exclusao somente desta consulta; preserve --exclude no refinamento"}[canonical]
+    out = {"schema_version": 1, "tmdb_id": tmdb_id, "veredito": veredito,
+           "veredito_canonico": canonical, "efeito": effect, "interaction_id": interaction}
+    if canonical == "not_now":
+        out["exclude"] = [tmdb_id]
     if as_json:
-        typer.echo(json.dumps({"schema_version": 1, "tmdb_id": tmdb_id, "veredito": veredito,
-                               "efeito": effect}, ensure_ascii=False))
-        return
-    console.print(f"{name}: [bold]{veredito}[/] → {effect} no próximo `recs recommend`")
+        typer.echo(json.dumps(out, ensure_ascii=False))
+    else:
+        console.print(f"{tmdb_id}: {veredito} -> {effect}")
+
+
+@app.command("interaction")
+def interaction_show(interaction_id: str, as_json: bool = typer.Option(False, "--json")):
+    """Consulta o registro local de uma interacao e suas acoes."""
+    try:
+        out = {"schema_version": 1, **interactions.get(db.connect(), interaction_id)}
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(json.dumps(out, ensure_ascii=False, indent=2))
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:

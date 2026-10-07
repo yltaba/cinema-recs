@@ -16,7 +16,7 @@ from pathlib import Path
 
 import duckdb
 
-from recs import match as match_mod, saved as saved_mod
+from recs import context, match as match_mod, saved as saved_mod
 
 # papel no perfil → jobs aceitos na filmografia
 FILMOGRAPHY_JOBS = {
@@ -33,6 +33,11 @@ class Pool:
 
     def add(self, tmdb_id: int, source: str) -> None:
         self.sources[tmdb_id].add(source)
+
+
+def source_counts(pool: Pool) -> dict[str, int]:
+    from collections import Counter
+    return dict(sorted(Counter(s for sources in pool.sources.values() for s in sources).items()))
 
 
 def _passes(item: dict, min_votes: int, today: str) -> bool:
@@ -111,10 +116,39 @@ async def generate(con: duckdb.DuckDBPyConnection, tmdb, cfg: dict, exclude: set
                     pool.add(m.tmdb_id, f"seed:{path.stem}")
                     pool.exempt.add(m.tmdb_id)
 
+    # Discover geral nunca recebe provedores: afinidades fortes ampliam, sem restringir,
+    # as demais fontes. Cada consulta conserva a feature que a originou.
+    for source, ctx in profile_discover_contexts(con, cfg):
+        for tid in await context.discover(tmdb, ctx, cfg, general=True):
+            pool.add(tid, source)
+
     for tid in list(pool.sources):
         if tid in exclude:
             del pool.sources[tid]
     return pool
+
+
+def profile_discover_contexts(con, cfg):
+    settings = cfg.get("retrieval", {})
+    limit = settings.get("profile_discover_features", 3)
+    if limit == 0:
+        return []
+    features = con.execute("""
+        SELECT feature_type, feature_id FROM profile_features
+        WHERE feature_type IN ('country', 'language', 'genre') AND affinity > 0 AND n >= ?
+        ORDER BY affinity DESC, n DESC, feature_type, feature_id LIMIT ?
+    """, [settings.get("profile_discover_min_evidence", 2), limit]).fetchall()
+    result = []
+    for ft, fid in features:
+        ctx = context.Context()
+        if ft == "country":
+            ctx.countries = [fid]
+        elif ft == "language":
+            ctx.languages = [fid]
+        else:
+            ctx.genres = [int(fid)]
+        result.append((f"discover:profile:{ft}:{fid}", ctx))
+    return result or [("discover:general", context.Context())]
 
 
 def save(con: duckdb.DuckDBPyConnection, pool: Pool) -> None:

@@ -51,6 +51,8 @@ sum_feature_types = ["keyword"]
 
 [availability]
 region = "BR"
+batch_size = 50            # candidatos verificados por lote quando streaming é obrigatório
+max_candidates = 1000      # orçamento de verificação; não corta ranking sem filtro de streaming
 provedores_assinados = ["Netflix", "Amazon Prime Video", "HBO Max", "Disney Plus", "Apple TV", "MUBI"]
 
 [now]
@@ -59,6 +61,10 @@ discover_pages = 3           # páginas de /discover/movie por ordenação (20 f
 discover_min_votes = 50
 discover_quality_votes = 300 # piso de votos na ordenação por nota média
 n = 8
+
+[retrieval]
+profile_discover_features = 3   # consultas gerais por features positivas; 0 desativa a expansão
+profile_discover_min_evidence = 2
 
 [eval]
 holdout = 0.15

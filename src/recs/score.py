@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import duckdb
 
+from recs import eligibility
+
 ROLE_LABELS = {
     "director": "diretor", "writer": "roteiro", "cinematographer": "fotografia", "editor": "montagem",
     "composer": "trilha", "country": "país", "language": "idioma", "decade": "década",
     "keyword": "keyword", "genre": "gênero",
 }
-DOCUMENTARY_GENRE = 99
-
-
-def compute(con: duckdb.DuckDBPyConnection, cfg: dict) -> None:
+def compute(con: duckdb.DuckDBPyConnection, cfg: dict, *, eligibility_ready: bool = False) -> None:
+    # Compatibilidade para chamadores antigos. O pipeline prepara filtros antes de pontuar.
+    if not eligibility_ready:
+        eligibility.build(con, cfg)
     s, weights = cfg["score"], cfg["profile"]["feature_weights"]
     con.execute("CREATE OR REPLACE TEMP TABLE type_weights (feature_type TEXT, weight DOUBLE)")
     con.executemany("INSERT INTO type_weights VALUES (?, ?)", list(weights.items()))
@@ -49,19 +51,12 @@ def compute(con: duckdb.DuckDBPyConnection, cfg: dict) -> None:
            1 / (1 + $alpha * ln(1 + coalesce(m.vote_count, 0))) AS pop_penalty,
            CASE WHEN list_has_any(b.sources, ['watchlist', 'salvo']) THEN $boost ELSE 1 END AS boost,
            b.base * pop_penalty * boost AS score,
-           b.exempt OR (
-               coalesce(m.vote_count, 0) >= $min_votes
-               AND ($shorts OR coalesce(m.runtime, 0) = 0 OR m.runtime >= $min_runtime)
-               AND ($docs OR NOT EXISTS (
-                   SELECT 1 FROM film_genres g WHERE g.tmdb_id = b.tmdb_id AND g.genre_id = $doc_genre))
-           ) AS eligible
-    FROM base b JOIN film_meta m USING (tmdb_id)
-    """, {"alpha": s["popularity_alpha"], "boost": cfg["candidates"]["watchlist_boost"],
-          "min_votes": s["min_vote_count"], "shorts": s["include_shorts"], "min_runtime": s["min_runtime"],
-          "docs": s["include_documentaries"], "doc_genre": DOCUMENTARY_GENRE})
+           e.eligible
+    FROM base b JOIN film_meta m USING (tmdb_id) JOIN eligibility e USING (tmdb_id)
+    """, {"alpha": s["popularity_alpha"], "boost": cfg["candidates"]["watchlist_boost"]})
 
 
-def ranked(con: duckdb.DuckDBPyConnection, limit: int, only: str | None = None) -> list[dict]:
+def ranked(con: duckdb.DuckDBPyConnection, limit: int | None = None, only: str | None = None) -> list[dict]:
     """Elegíveis por score; `only` restringe aos tmdb_id de uma tabela (ex.: context_ok)."""
     restrict = f"AND s.tmdb_id IN (SELECT tmdb_id FROM {only})" if only else ""
     rows = con.execute(f"""
@@ -74,7 +69,7 @@ def ranked(con: duckdb.DuckDBPyConnection, limit: int, only: str | None = None) 
                (SELECT string_agg(iso, '/') FROM film_countries c WHERE c.tmdb_id = s.tmdb_id) AS countries
         FROM scores s JOIN film_meta m USING (tmdb_id)
         WHERE s.eligible {restrict}
-        ORDER BY s.score DESC
+        ORDER BY s.score DESC, s.tmdb_id
         LIMIT ?""", [limit]).fetchall()
     cols = ["tmdb_id", "score", "base", "pop_penalty", "boost", "sources", "title", "original_title", "year",
             "vote_count", "runtime", "directors", "director_ids", "countries"]
