@@ -1,6 +1,6 @@
 # Reforma de arquitetura — 7 de outubro de 2026
 
-Interface principal: Codex operando JSON da CLI. Pipeline determinístico:
+Interface principal: agente (Codex na época; Claude Code desde 07/10/2026) operando JSON da CLI. Pipeline determinístico:
 `retrieval → eligibility/context filters → personal score → contextual rerank → availability → presentation`.
 
 ## Impacto observado antes de editar

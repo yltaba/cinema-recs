@@ -1,6 +1,6 @@
 """Modo contexto (Fase 7): restrições do momento ("comédia, até 2h, nos meus serviços") sobre o perfil.
 
-O pedido em linguagem natural é traduzido em flags pelo Codex (ver AGENTS.md e skill filme); aqui tudo é
+O pedido em linguagem natural é traduzido em flags pelo agente (ver CLAUDE.md e skill filme); aqui tudo é
 determinístico. O pool da Fase 4 é ampliado com /discover/movie nos mesmos filtros, e o ranking final é
 
     score_contexto = score × (1 + prefer_bonus · nº de keywords preferidas no filme)   (se score > 0)

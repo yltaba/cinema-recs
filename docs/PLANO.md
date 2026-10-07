@@ -17,12 +17,13 @@ Regras fixas:
 | 5. Rerank com LLM | — | descartada |
 | 6. Eval offline (holdout) e feedback | `recs eval`, `recs feedback` | feita |
 | 7. Modo contexto | `recs now`, `recs keywords` + skill `filme` | feita; perfil de casal fora do escopo |
-| 8. Interface Codex | `AGENTS.md`, `.agents/skills/filme/SKILL.md`, JSON da CLI | implementada; ver validação em `docs/MIGRACAO-CODEX.md` |
+| 8. Interface conversacional | `CLAUDE.md`, `.claude/skills/filme/SKILL.md`, JSON da CLI | Claude Code desde 07/10/2026; ver `docs/CLAUDE-CODE.md` |
+| 9. Equilíbrio de origem | `score.max_country_share`, `complemento_origem`, `max_country_share20` | feita; pesos mantidos após eval |
 
 ## Fase 7 — modo contexto
 
 Pedidos em linguagem natural ("estou com minha namorada e queremos ver um filme engraçado") redirecionam
-a busca sem abandonar o perfil. O Codex faz a interpretação; o `recs` continua determinístico.
+a busca sem abandonar o perfil. O agente faz a interpretação; o `recs` continua determinístico.
 
 - `recs now` com flags estruturadas: `--genre`, `--max-runtime`/`--min-runtime`, `--subscribed-only`,
   `--streaming-only`, `--language`, `--country`, `--years`, `--prefer`/`--avoid` (keywords), `--exclude`;
@@ -30,7 +31,7 @@ a busca sem abandonar o perfil. O Codex faz a interpretação; o `recs` continua
 - Pool ampliado pelo contexto e por features do perfil via `/discover/movie`; provedores somente
   com filtro explícito. Streaming não participa do score pessoal nem da ordem sem restrição.
 - Score = afinidade com o perfil × encaixe no contexto (keywords de tom como ajuste leve, filtros rígidos).
-- `AGENTS.md` e skill `$filme` orientam o Codex a traduzir pedidos em flags, preservar restrições nos
+- `CLAUDE.md` e a skill `filme` orientam o agente a traduzir pedidos em flags, preservar restrições nos
   refinamentos e apresentar 3–5 opções com os motivos retornados, quando disponíveis.
 - Perfil de casal só deve ser retomado com segundo histórico real e uso recorrente que o justifique.
 
@@ -46,7 +47,6 @@ aprendizado negativo novo de `disliked`, perfil de casal ou medição de qualida
 
 ## Migração e melhorias
 
-A adoção do Codex foi solicitada em 06/10/2026 após o cancelamento do Claude Code; não depende de um piloto
-comparativo entre os dois agentes. O roteiro antigo foi substituído pelas instruções nativas do Codex.
-Consulte `docs/MIGRACAO-CODEX.md` para entregas e verificações. A avaliação anterior fica como registro histórico
-e backlog técnico; migração da interface não significa conclusão de todas as melhorias de algoritmo, ingestão e eval.
+O Codex foi adotado em 06/10/2026 e descontinuado em 07/10/2026; o projeto voltou a ser 100% Claude Code
+(`CLAUDE.md`, `.claude/skills/filme/`). Estado atual em `docs/CLAUDE-CODE.md`; o registro da fase Codex e a
+avaliação anterior ficam em `docs/historico/` como histórico e backlog técnico; migração da interface não significa conclusão de todas as melhorias de algoritmo, ingestão e eval.

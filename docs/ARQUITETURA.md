@@ -3,7 +3,7 @@
 O sistema é um pipeline em fases. Todas gravam num único banco DuckDB (`data/recs.duckdb`), e as tabelas
 derivadas são recriadas por SQL a partir do JSON bruto. Isso torna barato refazer qualquer etapa.
 
-O Codex opera a CLI e interpreta pedidos. O Python executa deterministicamente:
+O Claude Code opera a CLI e interpreta pedidos. O Python executa deterministicamente:
 `retrieval → eligibility/context filters → personal score → contextual rerank → availability → presentation`.
 Disponibilidade é metadado por padrão; somente flags explícitas ativam seu filtro. "Hoje/agora" não é uma flag.
 
@@ -140,7 +140,15 @@ diversidade, esgotar o pool ou atingir `availability.max_candidates`. `batch_siz
 `stop_reason` distingue `filled`, `exhausted` e `limit`; este último produz aviso de candidatos não verificados.
 `--provider Netflix` aplica filtro determinístico pelo nome normalizado do serviço, sem equiparar canais
 adicionais à assinatura principal. Vários provedores são alternativas; junto de `--subscribed-only`, o
-provedor correspondente também precisa ser assinado. O Codex não filtra manualmente a saída.
+provedor correspondente também precisa ser assinado. O agente não filtra manualmente a saída.
+
+Equilíbrio de origem: sem `--country`/`--language`, se um país passa de `score.max_country_share` (0,4) na
+seleção, `diversify` mantém a seleção principal e acrescenta complementos de outros países, na ordem do ranking
+e respeitando o limite por diretor, até o teto ou 2n itens (`complemento_origem: true`). Coproduções contam
+para cada país. Com streaming obrigatório, o teto vale sobre os aceitos, e os lotes continuam até equilibrar
+ou esgotar o orçamento. Scores e ordem não mudam. `diagnostico.availability.origem` registra teto, país
+dominante, participação e complementos. Na descoberta por perfil, país e idioma correspondentes (`JP`/`ja`)
+ocupam um único slot.
 
 O sufixo de plano com anúncios é removido ("Netflix Standard with Ads" → Netflix). Canais ("HBO Max Amazon
 Channel") **não** contam como o serviço assinado, porque são assinaturas à parte.
@@ -192,17 +200,17 @@ Cache de discover usa TTL de buscas sem streaming e TTL de provedores quando dep
 Não há mais corte em 3.000 scores nem corte prévio em 200 candidatos. Há orçamento somente para a
 verificação de disponibilidade obrigatória. Diagnósticos incluem contagens cumulativas por filtro.
 
-O `AGENTS.md` contém as regras permanentes do Codex; `.agents/skills/filme/SKILL.md` contém o roteiro de
+O `CLAUDE.md` contém as regras permanentes do Claude Code; `.claude/skills/filme/SKILL.md` contém o roteiro de
 tradução de pedidos para flags, refinamentos, salvos e feedback. A interpretação fica com o modelo,
 e o `recs` continua determinístico e testável. Não há chamada a modelo de linguagem no pipeline Python.
 
 `now`, `explore`, `profile`, `interaction`, `keywords`, `salvar`, `salvos` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
-sucesso. Os campos existentes de `now` foram preservados. O contrato está em `MIGRACAO-CODEX.md`.
+sucesso. Os campos existentes de `now` foram preservados. Histórico do contrato em `historico/MIGRACAO-CODEX.md`.
 Erros ainda usam código de saída não zero e stderr, sem contrato JSON unificado.
 
 Perfil de casal está fora do escopo: somente reconsiderar com segundo histórico real e uso recorrente.
 `recommend` é compatibilidade para exploração com relatório. `explore --markdown caminho.md` torna essa
-saída opcional; a interface principal é JSON da CLI usado pelo Codex.
+saída opcional; a interface principal é JSON da CLI usado pelo Claude Code.
 
 ## Interações e feedback
 

@@ -5,9 +5,9 @@ de cada um.
 
 ## 1. Pedir um filme para agora
 
-### Pelo Codex (recomendado)
+### Pelo Claude Code (recomendado)
 
-Abra o projeto `cinema-recs` no Codex e peça em linguagem natural (ou invoque `$filme`):
+Abra o Claude Code na pasta `cinema-recs` e peça em linguagem natural (ou invoque `/filme`):
 
 > estou com minha namorada e queremos ver algo engraçado, nada pesado, até umas 2h
 >
@@ -15,19 +15,19 @@ Abra o projeto `cinema-recs` no Codex e peça em linguagem natural (ou invoque `
 >
 > algum terror dos anos 70, qualquer streaming serve
 
-O Codex transforma o pedido num `recs now --json`, roda o comando e apresenta de 3 a 5 opções, se disponíveis, com o motivo de cada
+O Claude Code transforma o pedido num `recs now --json` (ou `explore --json`), roda o comando e apresenta de 3 a 5 opções, se disponíveis, com o motivo de cada
 uma e onde assistir. Depois disso você pode:
 
 - **Refinar o pedido:** "mais curto", "algo brasileiro", "esse já vimos".
 - **Salvar sugestões:** "salve essas".
-- **Contar o que achou:** diga "assisti o X, gostei"; o Codex oferece registrar o feedback.
+- **Contar o que achou:** diga "assisti o X, gostei"; o Claude Code oferece registrar o feedback.
   "Registre que gostei de X" já autoriza o registro, sem confirmação adicional.
 
-As regras permanentes estão em [AGENTS.md](AGENTS.md), e o roteiro na
-[skill filme](.agents/skills/filme/SKILL.md). Em uma nova sessão, salvos e feedback continuam nos arquivos;
+As regras permanentes estão em [CLAUDE.md](CLAUDE.md), e o roteiro na
+[skill filme](.claude/skills/filme/SKILL.md). Em uma nova sessão, salvos e feedback continuam nos arquivos;
 os filtros de uma conversa anterior precisam ser informados novamente.
 
-Em refinamentos, o Codex mantém as restrições anteriores. Se faltarem resultados, apresenta os encontrados
+Em refinamentos, o Claude Code mantém as restrições anteriores. Se faltarem resultados, apresenta os encontrados
 e propõe uma mudança de filtro para você escolher. Exclusões por tema dependem das keywords e não garantem
 ausência do conteúdo. Pedir algo para casal usa seu perfil existente, sem combinar dois históricos.
 
@@ -59,7 +59,7 @@ uv run recs now -g comedia --max-runtime 110 --subscribed-only `
 | `--exclude` | ids TMDB que ficam de fora só nesta consulta |
 | `--n` | quantos filmes mostrar (padrão 8) |
 | `--markdown caminho.md` | relatório opcional, também em `explore` |
-| `--json` | saída estruturada para o Codex; disponível também em `keywords`, `salvar`, `salvos` e `feedback` |
+| `--json` | saída estruturada para o agente; disponível também em `keywords`, `salvar`, `salvos` e `feedback` |
 
 Para descobrir o nome exato de uma keyword:
 
@@ -79,7 +79,7 @@ uv run recs salvos                                         # pendentes, com onde
 
 - Os salvos ficam em `overrides/salvos.csv`.
 - A CLI inclui salvos no pool, com o mesmo multiplicador da watchlist (🔖 no relatório).
-  Ao pedir opções novas na conversa, o Codex os exclui daquela consulta; você pode pedir para reconsiderá-los.
+  Ao pedir opções novas na conversa, o Claude Code os exclui daquela consulta; você pode pedir para reconsiderá-los.
 - Saem da lista de pendentes quando você os marca com `feedback` ou quando aparecem como vistos num novo export.
 
 ## 3. Dizer o que achou
@@ -195,7 +195,7 @@ adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nom
 - **Um filme que você assina aparece como "outro streaming":** confira o nome exato em `recs now --json`
   (campo `streaming`) e ajuste `provedores_assinados`.
 - **Poucos resultados no `now`:** o comando avisa. Você pode escolher ampliar duração, serviços ou gêneros;
-  o Codex preserva as restrições até essa escolha. `diagnostico.availability.stop_reason` distingue pool
+  o Claude Code preserva as restrições até essa escolha. `diagnostico.availability.stop_reason` distingue pool
   esgotado de orçamento atingido (`limit`). O orçamento só existe quando streaming é obrigatório.
 - **Disponibilidade desatualizada:** os provedores ficam 7 dias em cache, e os metadados 90 dias
   (`[tmdb]` no config).

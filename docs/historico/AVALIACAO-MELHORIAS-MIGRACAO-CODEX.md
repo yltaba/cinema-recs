@@ -1,5 +1,8 @@
 # Melhorias do cinema-recs e avaliação da migração para Codex
 
+> **Arquivado em 07/10/2026.** O projeto voltou a usar só o Claude Code; `AGENTS.md` e `.agents/` foram
+> removidos. Estado atual: [CLAUDE-CODE.md](../CLAUDE-CODE.md). Este arquivo é registro histórico.
+
 Data: 6 de outubro de 2026.
 
 > Registro histórico da avaliação anterior à implementação. O usuário decidiu adotar Codex após cancelar

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run recs:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(.venv/Scripts/recs.exe:*)",
+      "Bash(.venv/Scripts/python.exe -m pytest:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(../.env)",
+      "Bash(cat .env:*)",
+      "Bash(cat ./.env:*)"
+    ]
+  }
+}

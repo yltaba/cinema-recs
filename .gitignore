@@ -13,3 +13,5 @@ wheels/
 .env
 data/
 _notes/
+# Claude Code: configurações pessoais
+.claude/settings.local.json

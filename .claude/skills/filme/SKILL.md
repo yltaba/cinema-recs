@@ -3,10 +3,10 @@ name: filme
 description: Recomenda filmes usando o perfil pessoal do cinema-recs, refina pedidos e consulta ou grava salvos e feedback pela CLI local. Use para pedidos de filmes neste projeto, não para manutenção de código ou pesquisa genérica sobre cinema.
 ---
 
-# Filmes pelo Codex
+# Filmes pelo Claude Code
 
-Use a raiz do cinema-recs e as regras de `AGENTS.md`. O ranking é calculado pela CLI; o Codex traduz o pedido
-e explica a saída. Não é necessário OpenAI API, SDK, MCP ou acesso automatizado ao Letterboxd.
+Use a raiz do cinema-recs e as regras de `CLAUDE.md`. O ranking é calculado pela CLI; o agente traduz o pedido
+e explica a saída. Não é necessário API de LLM, SDK, MCP ou acesso automatizado ao Letterboxd.
 
 ## Buscar e refinar
 
@@ -47,6 +47,21 @@ claro que não aplicou um filtro obrigatório. A CLI ainda não tem rerank suave
 essa preferência em `--subscribed-only` nem reordene por conta própria.
 As keywords não garantem ausência de um tema. Se a exclusão for importante, deixe essa limitação clara.
 
+### Pedidos temáticos e origem
+
+- Só use `--country`, `--language` e `-g` quando o pedido ou a conversa os justificarem. Um tema ("algo que me
+  inspire", "para descansar", "sobre trabalho") não é um país, idioma ou gênero: traduza-o em `--prefer`
+  (keywords exatas de `recs keywords`) e `--avoid`, numa busca ampla com `explore`. Não faça uma segunda busca
+  recortada por origem só porque o perfil tem afinidade com ela.
+- Pedidos por prompt têm escopo amplo: `--prefer` pesa pouco, então a CLI é uma das fontes. Complete com
+  conhecimento geral de cinema para cobrir o tema e deixe claro que a disponibilidade desses títulos não foi
+  verificada pelo programa.
+- Sem origem pedida, a CLI já equilibra a seleção: se um país passa de `score.max_country_share` (40%), ela
+  acrescenta filmes de outros lugares com `complemento_origem: true` (ver `diagnostico.availability.origem`).
+  A lista pode crescer até 2n; apresente os complementos como "de outros lugares".
+- Confira a lista final antes de apresentar: sem origem pedida, nenhum país deve passar de ~40% dos títulos,
+  incluindo os de conhecimento geral. Se passar, troque os excedentes por títulos de outras origens.
+
 Mantenha na conversa os filtros aplicados e os IDs de cada opção apresentada. Em "mais curto", altere só a
 duração. Em "esse já vimos", acumule a exclusão com as anteriores. Se a referência for ambígua, esclareça
 qual filme antes de gravar ou excluir. Não invente continuidade de contexto entre sessões.
@@ -63,9 +78,11 @@ Proponha uma alteração concreta de filtro para o usuário escolher quando nece
 
 ## Apresentar
 
-Apresente de 3 a 5 opções, se existirem, respeitando a ordem retornada entre as que atendem ao pedido.
+Apresente de 3 a 5 opções principais, se existirem, respeitando a ordem retornada entre as que atendem ao pedido,
+mais os complementos de origem que a CLI acrescentar.
 Guarde o `interaction_id` junto dos IDs apresentados. O registro automático contém as opções emitidas
 pela CLI, com ranks, scores e fontes; peça `--n` compatível com a quantidade que vai apresentar.
+Inclua as opções com `complemento_origem: true` quando houver, num bloco "de outros lugares".
 Mostre título, ano, diretor, duração, serviços conhecidos (assinados primeiro) e uma frase baseada em `motivos` e
 `keywords_preferidas`. Campo ausente significa informação indisponível. Score não é probabilidade de gostar.
 Não invente sinopse, nota pessoal ou disponibilidade. A disponibilidade é do cache TMDB/JustWatch e pode mudar.

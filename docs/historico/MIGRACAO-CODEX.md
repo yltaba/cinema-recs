@@ -1,9 +1,12 @@
 # Migração para Codex
 
+> **Arquivado em 07/10/2026.** O projeto voltou a usar só o Claude Code; `AGENTS.md` e `.agents/` foram
+> removidos. Estado atual: [CLAUDE-CODE.md](../CLAUDE-CODE.md). Este arquivo é registro histórico.
+
 ## Atualização arquitetural — 7 de outubro de 2026
 
-A reforma está descrita em [ARQUITETURA.md](ARQUITETURA.md), com plano de commits e impacto em
-[REFORMA-ARQUITETURA.md](REFORMA-ARQUITETURA.md). As seções seguintes registram a migração original de 6/10;
+A reforma está descrita em [ARQUITETURA.md](../ARQUITETURA.md), com plano de commits e impacto em
+[REFORMA-ARQUITETURA.md](../REFORMA-ARQUITETURA.md). As seções seguintes registram a migração original de 6/10;
 as mudanças abaixo prevalecem sobre seus contratos e pendências históricos.
 
 - `now` e `explore` compartilham o pipeline; streaming só filtra por pedido explícito. A skill não
@@ -30,9 +33,9 @@ no pipeline Python existente. Não foram introduzidos OpenAI API, SDK de agentes
 
 ## Instruções e entrada
 
-- [AGENTS.md](../AGENTS.md): regras permanentes, ambiente, testes e encaminhamento para o roteiro.
-- [Skill filme](../.agents/skills/filme/SKILL.md): interpretação, refinamentos, apresentação, salvos e feedback.
-- [USO.md](../USO.md): guia de uso; [README](../README.md): instalação e preparação dos dados.
+- `AGENTS.md` (removido): regras permanentes, ambiente, testes e encaminhamento para o roteiro.
+- Skill filme (hoje em `.claude/skills/filme/`): interpretação, refinamentos, apresentação, salvos e feedback.
+- [USO.md](../../USO.md): guia de uso; [README](../../README.md): instalação e preparação dos dados.
 
 A organização segue a documentação oficial de [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
 e de [skills locais](https://learn.chatgpt.com/docs/build-skills). A skill está em `.agents/skills/filme/`,
