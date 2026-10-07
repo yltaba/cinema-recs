@@ -83,15 +83,55 @@ def reasons(con: duckdb.DuckDBPyConnection, tmdb_id: int, k: int = 3) -> list[tu
         WHERE tmdb_id = ? AND contrib > 0 ORDER BY contrib DESC LIMIT ?""", [tmdb_id, k]).fetchall()]
 
 
-def diversify(rows: list[dict], n: int, max_per_director: int) -> list[dict]:
-    out, per_director = [], {}
+def _countries(r: dict) -> set[str]:
+    return {c for c in (r.get("countries") or "").split("/") if c}
+
+
+def origin_share(rows: list[dict]) -> tuple[str | None, float]:
+    """País mais frequente na seleção e sua participação; coproduções contam para cada país."""
+    counts: dict[str, int] = {}
     for r in rows:
-        ids = r["director_ids"] or []
-        if any(per_director.get(d, 0) >= max_per_director for d in ids):
-            continue
-        for d in ids:
+        for c in _countries(r):
+            counts[c] = counts.get(c, 0) + 1
+    if not counts:
+        return None, 0.0
+    dominant = min(counts, key=lambda c: (-counts[c], c))
+    return dominant, counts[dominant] / len(rows)
+
+
+def diversify(rows: list[dict], n: int, max_per_director: int, country_cap: float = 0.0) -> list[dict]:
+    """Os n primeiros na ordem do ranking, com limite por diretor.
+
+    Com `country_cap` (fração), se um país passar desse teto a seleção principal fica intacta e recebe
+    complementos de outros países (na ordem do ranking, marcados com origin_complement) até o país
+    dominante voltar ao teto ou a lista chegar a 2n. Nunca altera scores nem reordena a seleção principal.
+    """
+    out, per_director = [], {}
+
+    def fits(r: dict) -> bool:
+        return not any(per_director.get(d, 0) >= max_per_director for d in r["director_ids"] or [])
+
+    def take(r: dict) -> None:
+        for d in r["director_ids"] or []:
             per_director[d] = per_director.get(d, 0) + 1
         out.append(r)
-        if len(out) == n:
+
+    rest = iter(rows)
+    for r in rest:
+        if fits(r):
+            take(r)
+            if len(out) == n:
+                break
+    if country_cap <= 0 or len(out) < n:
+        return out
+    remaining = list(rest)
+    while len(out) < 2 * n:
+        dominant, share = origin_share(out)
+        if dominant is None or share <= country_cap + 1e-9:
             break
+        nxt = next((r for r in remaining if dominant not in _countries(r) and fits(r)), None)
+        if nxt is None:
+            break
+        remaining.remove(nxt)
+        take({**nxt, "origin_complement": True})
     return out

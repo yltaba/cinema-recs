@@ -46,6 +46,7 @@ min_runtime = 60
 include_shorts = false
 include_documentaries = true
 max_per_director = 2
+max_country_share = 0.4   # sem país/idioma pedido, um país acima disso recebe complementos de outros (0 desliga)
 # Tipos somados; os demais entram pela média no filme (evita inflar antologias e coproduções).
 sum_feature_types = ["keyword"]
 

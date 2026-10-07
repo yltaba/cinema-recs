@@ -223,7 +223,7 @@ def now(
     exclude: list[str] = typer.Option(None, help="tmdb_ids a pular só nesta consulta"),
     n: int = typer.Option(None, min=1, help="Quantos filmes (padrão: config now.n)"),
     markdown: Path = typer.Option(None, help="Grava também um relatório Markdown neste caminho"),
-    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação"),
 ):
     """Recomendações pessoais; filtros opcionais e streaming como metadado por padrão."""
     cfg = config.load()
@@ -275,6 +275,7 @@ def now(
                 "assinados": r["availability"].subscribed, "streaming": r["availability"].streaming,
                 "aluguel_compra": r["availability"].rent_buy,
                 "disponibilidade_conhecida": r["availability"].known,
+                "complemento_origem": bool(r.get("origin_complement")),
             } for r in rows],
             "avisos": warnings,
             "atribuicao": report_mod.ATTRIBUTION,
@@ -297,6 +298,8 @@ def now(
         why = report_mod.reasons_text(r["reasons"])
         if r["prefer_hits"]:
             why += " · [cyan]" + ", ".join(r["prefer_hits"]) + "[/]"
+        if r.get("origin_complement"):
+            why += " · [magenta]de outros lugares[/]"
         t.add_row(str(i), str(r["tmdb_id"]), report_mod.title_cell(r), str(r["year"] or ""), r["directors"] or "",
                   str(r["runtime"] or ""), f"{r['context_score']:.2f}", why, where)
     console.print(t)
@@ -309,7 +312,7 @@ def now(
 def salvar(
     tmdb_ids: list[int] = typer.Argument(..., help="Ids TMDB (coluna tmdb)"),
     contexto: str = typer.Option("", help="Nota livre: o pedido que gerou a sugestão"),
-    as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação"),
+    as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação"),
     interaction: str = typer.Option(None, help="Interação que apresentou as opções"),
 ):
     """Guarda filmes na lista local "para ver" (overrides/salvos.csv)."""
@@ -332,7 +335,7 @@ def salvar(
 
 
 @app.command()
-def salvos(as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação")):
+def salvos(as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação")):
     """Lista os salvos que ainda não foram vistos nem descartados, com onde assistir."""
     cfg = config.load()
     root = config.root()
@@ -375,7 +378,7 @@ def salvos(as_json: bool = typer.Option(False, "--json", help="Saída JSON para 
 @app.command()
 def keywords(term: str = typer.Argument(..., help="Trecho do nome (em inglês)"),
              limit: int = typer.Option(30),
-             as_json: bool = typer.Option(False, "--json", help="Saída JSON para Codex e automação")):
+             as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação")):
     """Keywords do TMDB já em cache que contêm o termo, com o nº de filmes (para --prefer/--avoid)."""
     rows = context_mod.search_keywords(db.connect(), term, limit)
     if as_json:

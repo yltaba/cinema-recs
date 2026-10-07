@@ -64,7 +64,9 @@ def write(path: Path, available: list[dict], explore: list[dict], meta: dict) ->
 
 def write_explore(path: Path, rows: list[dict], diagnostic: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    complements = [r for r in rows if r.get("origin_complement")]
     lines = [f"# Exploração — {date.today()}", "",
              f"Candidatos: {diagnostic['retrieved']} · elegíveis: {diagnostic['eligible']}", "",
-             *section("Recomendações", rows), ATTRIBUTION, ""]
+             *section("Recomendações", [r for r in rows if not r.get("origin_complement")]),
+             *(section("De outros lugares", complements) if complements else []), ATTRIBUTION, ""]
     path.write_text("\n".join(lines), encoding="utf-8")

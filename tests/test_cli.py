@@ -1,4 +1,4 @@
-"""Contrato usado pelo Codex, com banco e arquivos isolados e sem rede."""
+"""Contrato usado pelo agente, com banco e arquivos isolados e sem rede."""
 
 import json
 import tomllib
@@ -130,6 +130,8 @@ def test_explore_report_is_optional_and_order_is_shared(local_cli, monkeypatch):
     target = root / "reports" / "test.md"
     report = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(target)])
     assert plain["filmes"] == report["filmes"]
+    assert all(f["complemento_origem"] is False for f in plain["filmes"])
+    assert set(plain["diagnostico"]["availability"]["origem"]) == {"cap", "dominante", "participacao", "complementos"}
     assert "Recomendações" in target.read_text(encoding="utf-8")
     assert "Disponível no streaming BR" not in target.read_text(encoding="utf-8")
 

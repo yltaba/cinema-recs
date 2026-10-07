@@ -61,3 +61,39 @@ def test_exact_provider_filter_continues_past_other_subscriptions_and_channels(m
     selected, diagnostic = asyncio.run(availability.select(None, None, rows, cfg, Context(providers=["Netflix"]), 1))
     assert [r["tmdb_id"] for r in selected] == [2]
     assert diagnostic["batches"] == 3
+
+
+def _origin_rows():
+    countries = ["JP", "JP", "JP", "US", "JP", "FR", "IT"]
+    return [dict(tmdb_id=i, score=10-i, director_ids=[i], countries=c) for i, c in enumerate(countries)]
+
+
+def _cap_cfg():
+    return {"availability": {"batch_size": 2, "max_candidates": 10, "provedores_assinados": ["Netflix"]},
+            "score": {"max_per_director": 2, "max_country_share": 0.4}}
+
+
+def test_origin_cap_appends_complements_without_origin_filter(monkeypatch):
+    monkeypatch.setattr(availability, "fetch", AsyncMock(return_value={}))
+    selected, diagnostic = asyncio.run(availability.select(None, None, _origin_rows(), _cap_cfg(), Context(), 4))
+    assert [r["tmdb_id"] for r in selected] == [0, 1, 2, 3, 5, 6]
+    assert [bool(r.get("origin_complement")) for r in selected] == [False] * 4 + [True] * 2
+    assert diagnostic["origem"] == {"cap": 0.4, "dominante": "JP", "participacao": 0.5, "complementos": 2}
+
+
+@pytest.mark.parametrize("ctx", [Context(countries=["JP"]), Context(languages=["ja"])])
+def test_origin_cap_is_off_when_origin_was_requested(monkeypatch, ctx):
+    monkeypatch.setattr(availability, "fetch", AsyncMock(return_value={}))
+    selected, diagnostic = asyncio.run(availability.select(None, None, _origin_rows(), _cap_cfg(), ctx, 4))
+    assert [r["tmdb_id"] for r in selected] == [0, 1, 2, 3]
+    assert diagnostic["origem"]["cap"] == 0 and diagnostic["origem"]["complementos"] == 0
+
+
+def test_origin_cap_applies_to_accepted_when_streaming_is_required(monkeypatch):
+    monkeypatch.setattr(availability, "fetch", AsyncMock(return_value={
+        i: {"flatrate": [{"provider_name": "Netflix"}]} for i in (0, 1, 2, 4, 6)}))
+    selected, diagnostic = asyncio.run(availability.select(
+        None, None, _origin_rows(), _cap_cfg(), Context(subscribed_only=True), 3))
+    assert [r["tmdb_id"] for r in selected] == [0, 1, 2, 6]
+    assert selected[-1]["origin_complement"]
+    assert diagnostic["checked"] == 7

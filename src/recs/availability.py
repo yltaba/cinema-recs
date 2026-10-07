@@ -82,10 +82,20 @@ async def select(con, tmdb, rows, cfg, ctx, n):
 
     Percorre a ordem recebida em lotes até preencher a seleção com diversidade,
     esgotar o pool ou consumir o orçamento. Nunca modifica scores.
+    Sem país ou idioma pedidos, aplica o teto de origem (score.max_country_share): a seleção principal
+    fica intacta e recebe complementos de outros países quando um país domina a lista.
     """
-    from recs.score import diversify
+    from recs.score import diversify, origin_share
 
     max_dir = cfg["score"]["max_per_director"]
+    cap = 0.0 if (ctx.countries or ctx.languages) else float(cfg["score"].get("max_country_share", 0) or 0)
+
+    def choose(rows):
+        return diversify(rows, n, max_dir, cap)
+
+    def balanced(sel):
+        return len(sel) >= n and (cap <= 0 or origin_share(sel)[1] <= cap + 1e-9)
+
     settings = cfg["availability"]
     required = bool(ctx.subscribed_only or ctx.streaming_only or ctx.providers)
     batch_size = settings.get("batch_size", 50)
@@ -94,7 +104,7 @@ async def select(con, tmdb, rows, cfg, ctx, n):
         raise ValueError("n, batch_size e max_candidates devem ser positivos")
     diagnostic = {"required": required, "checked": 0, "matched": 0, "batches": 0}
     # Sem restrição: escolhe antes da consulta, para que catálogo nunca afete a seleção.
-    pending = rows[:limit] if required else diversify(rows, n, max_dir)
+    pending = rows[:limit] if required else choose(rows)
     accepted = []
     for offset in range(0, len(pending), batch_size):
         batch = pending[offset:offset + batch_size]
@@ -111,12 +121,14 @@ async def select(con, tmdb, rows, cfg, ctx, n):
                                                    for p in (a.subscribed if ctx.subscribed_only else a.streaming))))
             if passes:
                 accepted.append(r)
-        selected = diversify(accepted, n, max_dir)
-        if len(selected) >= n:
+        if balanced(choose(accepted)):
             break
-    selected = diversify(accepted, n, max_dir)
+    selected = choose(accepted)
+    dominant, share = origin_share(selected)
     diagnostic["matched"] = len(accepted)
     diagnostic["returned"] = len(selected)
+    diagnostic["origem"] = {"cap": cap, "dominante": dominant, "participacao": round(share, 3),
+                            "complementos": sum(1 for r in selected if r.get("origin_complement"))}
     diagnostic["stop_reason"] = ("filled" if len(selected) >= n else
                                   "limit" if required and len(rows) > limit else "exhausted")
     return selected, diagnostic

@@ -85,6 +85,37 @@ def test_diversify():
     assert [r["tmdb_id"] for r in out] == [0, 1, 3, 4]
 
 
+def _rows(countries):
+    return [{"tmdb_id": i, "director_ids": [i], "countries": c} for i, c in enumerate(countries)]
+
+
+def test_diversify_appends_other_origins_when_one_country_dominates():
+    rows = _rows(["JP", "JP", "JP/FR", "JP", "US", "JP", "IT", "FR", "BR"])
+    out = score.diversify(rows, 5, 2, country_cap=0.4)
+    assert [r["tmdb_id"] for r in out[:5]] == [0, 1, 2, 3, 4]       # seleção principal intacta
+    assert not any(r.get("origin_complement") for r in out[:5])
+    assert [r["tmdb_id"] for r in out[5:]] == [6, 7, 8]             # complementos sem JP, na ordem
+    assert all(r["origin_complement"] for r in out[5:])
+    assert len(out) <= 10
+    assert score.origin_share(out) == ("JP", 0.5)                   # o pool sem JP acabou antes do teto
+    assert "origin_complement" not in rows[6]                       # não altera as linhas de entrada
+
+
+def test_diversify_complements_stop_at_cap_or_twice_n():
+    rows = _rows(["JP"] * 4 + ["US", "FR", "IT", "DE", "KR", "BR", "MX"])
+    out = score.diversify(rows, 4, 2, country_cap=0.4)
+    assert score.origin_share(out)[1] <= 0.4 + 1e-9 or len(out) == 8
+    assert len(out) == 8 and [r["tmdb_id"] for r in out[4:]] == [4, 5, 6, 7]
+
+
+def test_diversify_without_cap_or_with_balanced_selection_is_unchanged():
+    rows = _rows(["JP", "US", "FR", "JP", "IT", "JP"])
+    assert [r["tmdb_id"] for r in score.diversify(rows, 5, 2, country_cap=0.4)] == [0, 1, 2, 3, 4]
+    jp = _rows(["JP"] * 6)
+    assert len(score.diversify(jp, 3, 2)) == 3
+    assert len(score.diversify(jp + _rows(["US"]), 3, 2, country_cap=0.0)) == 3
+
+
 @pytest.mark.parametrize("name,expected", [
     ("Netflix", True), ("Netflix Standard with Ads", True), ("Amazon Prime Video with Ads", True),
     ("HBO Max", True), ("HBO Max Amazon Channel", False), ("MUBI Amazon Channel", False),

@@ -19,7 +19,8 @@ def record_query(con, mode, query, rows, diagnostic, cfg):
     ensure_schema(con)
     iid = str(uuid4())
     options = [{"tmdb_id": r["tmdb_id"], "rank": rank, "score": r["score"],
-                "personal_score": r["base"], "context_score": r["context_score"], "sources": r["sources"]}
+                "personal_score": r["base"], "context_score": r["context_score"], "sources": r["sources"],
+                "origin_complement": bool(r.get("origin_complement"))}
                for rank, r in enumerate(rows, 1)]
     # Whitelist: jamais capturar credenciais ou configurações arbitrárias de HTTP.
     snapshot = {k: cfg[k] for k in ("profile", "candidates", "score", "now", "retrieval", "availability") if k in cfg}

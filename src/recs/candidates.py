@@ -128,16 +128,42 @@ async def generate(con: duckdb.DuckDBPyConnection, tmdb, cfg: dict, exclude: set
     return pool
 
 
+# Idioma original → país de origem típico. País e idioma correspondentes são a mesma origem na expansão
+# por perfil: "Japan" e "Japanese" não devem ocupar dois slots. Idiomas fora do mapa contam como origem própria.
+LANGUAGE_ORIGIN = {
+    "ja": "JP", "ko": "KR", "cn": "HK", "zh": "CN", "fr": "FR", "it": "IT", "de": "DE", "es": "ES",
+    "pt": "BR", "sv": "SE", "da": "DK", "no": "NO", "fi": "FI", "fa": "IR", "ru": "RU", "pl": "PL",
+    "hi": "IN", "th": "TH", "tr": "TR", "en": "US",
+}
+
+
+def _origin(feature_type: str, feature_id: str) -> str:
+    if feature_type == "country":
+        return feature_id
+    if feature_type == "language":
+        return LANGUAGE_ORIGIN.get(feature_id, f"lang:{feature_id}")
+    return f"genre:{feature_id}"
+
+
 def profile_discover_contexts(con, cfg):
     settings = cfg.get("retrieval", {})
     limit = settings.get("profile_discover_features", 3)
     if limit == 0:
         return []
-    features = con.execute("""
+    ranked_features = con.execute("""
         SELECT feature_type, feature_id FROM profile_features
         WHERE feature_type IN ('country', 'language', 'genre') AND affinity > 0 AND n >= ?
-        ORDER BY affinity DESC, n DESC, feature_type, feature_id LIMIT ?
-    """, [settings.get("profile_discover_min_evidence", 2), limit]).fetchall()
+        ORDER BY affinity DESC, n DESC, feature_type, feature_id
+    """, [settings.get("profile_discover_min_evidence", 2)]).fetchall()
+    features, origins = [], set()
+    for ft, fid in ranked_features:
+        origin = _origin(ft, fid)
+        if origin in origins:
+            continue
+        origins.add(origin)
+        features.append((ft, fid))
+        if len(features) == limit:
+            break
     result = []
     for ft, fid in features:
         ctx = context.Context()

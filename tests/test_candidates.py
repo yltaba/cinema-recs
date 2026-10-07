@@ -33,6 +33,16 @@ def test_profile_discover_uses_supported_positive_features_with_evidence():
         assert not results[0][1].streaming_only and not results[0][1].subscribed_only
 
 
+def test_profile_discover_counts_matching_country_and_language_as_one_origin():
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE profile_features(feature_type TEXT, feature_id TEXT, affinity DOUBLE, n INT)")
+        con.execute("INSERT INTO profile_features VALUES ('country','JP',0.74,6), ('language','ja',0.74,6),"
+                    "('language','cn',0.65,3), ('country','HK',0.47,7), ('language','fr',0.48,16)")
+        sources = [s for s, _ in candidates.profile_discover_contexts(con, {})]
+    assert sources == ["discover:profile:country:JP", "discover:profile:language:cn",
+                       "discover:profile:language:fr"]
+
+
 def test_general_discover_does_not_fetch_provider_list():
     cfg = {"availability": {"region": "BR", "provedores_assinados": ["Netflix"]},
            "now": {"discover_min_votes": 50, "discover_quality_votes": 300, "discover_pages": 1},
