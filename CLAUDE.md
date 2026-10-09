@@ -5,7 +5,7 @@ Responda em português. Execute comandos a partir da raiz do projeto.
 
 ## Uso conversacional
 
-Para escolher filmes, refinar sugestões, consultar/salvar opções ou registrar feedback, use a skill `filme`
+Para escolher filmes, refinar sugestões, ou registrar feedback, use a skill `filme`
 (`.claude/skills/filme/SKILL.md`) e siga o roteiro. Para manutenção de código, consulte `docs/ARQUITETURA.md`
 e `docs/PLANO.md` conforme necessário.
 
@@ -22,13 +22,14 @@ e `docs/PLANO.md` conforme necessário.
 - Termine listas de filmes com: "Dados de filmes: TMDB. Dados de streaming: JustWatch."
 - Credenciais são carregadas pelo programa de `TMDB_API_KEY`/`.env` (projeto ou ancestral). Nunca leia/imprima
   o conteúdo do `.env`, chaves, headers de autenticação ou URLs com credenciais. Prefira `.env` no projeto.
-- Preserve banco, export, feedback e salvos. Testes usam dados sintéticos e bancos temporários, nunca o banco pessoal.
+- Preserve banco, export e feedback. Testes usam dados sintéticos e bancos temporários, nunca o banco pessoal.
 - Execute comandos que usam DuckDB sequencialmente; não abra dois escritores sobre o mesmo banco.
 - Pesos e limites de ranking em `config.toml` só mudam após eval comparativo pertinente.
   O eval atual pode acessar a rede e modifica tabelas derivadas: use cópia isolada do projeto/dados para avaliação
   (ex.: `config.toml`, `overrides/` e `data/recs.duckdb` copiados para `data/evalcopy/`, rodando a CLI de lá;
   o `.env` do projeto é encontrado pelos diretórios ancestrais).
-- Salvar e registrar feedback são ações locais: execute quando solicitadas explicitamente; um comentário
+- Não existe lista de salvos local: a lista "para ver" é a watchlist do Letterboxd, que entra pelo export.
+- Registrar feedback é ação local: execute quando solicitadas explicitamente; um comentário
   sobre um filme permite oferecer o registro, não gravá-lo automaticamente. Não peça confirmação duplicada.
 
 ## Ambiente e verificação
@@ -46,7 +47,7 @@ Rode testes pertinentes ao código alterado. Não execute ingestão, eval ou gra
 - `src/recs/`: pipeline Python, um módulo por etapa; `cli.py` expõe Typer.
 - `config.toml`: configuração, pesos e provedores assinados.
 - `data/`: export e DuckDB, ignorados pelo Git.
-- `overrides/`: matching, feedback e salvos persistentes.
+- `overrides/`: matching e feedback persistentes.
 - `reports/`: relatórios Markdown com data; disponibilidade histórica não é uma consulta atual.
 - `.claude/skills/filme/`: roteiro conversacional; `.claude/settings.json`: permissões do projeto.
 - `USO.md`: comandos e exemplos; `docs/CLAUDE-CODE.md`: interface pelo Claude Code e estado da migração.

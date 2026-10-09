@@ -10,7 +10,7 @@ import duckdb
 import pytest
 from typer.testing import CliRunner
 
-from recs import cli, saved
+from recs import cli
 from recs.db import SCHEMA
 from recs.enrich import derive
 
@@ -47,26 +47,10 @@ def invoke_json(runner, args):
     return packet
 
 
-def test_save_deduplicates_and_feedback_removes_pending(local_cli, monkeypatch):
-    runner, root, _ = local_cli
-    packet = invoke_json(runner, ["salvar", "1", "1", "2", "--contexto", "comédia romântica"])
-    assert packet["salvos"] == [1, 2]
-    assert invoke_json(runner, ["salvar", "1"])["ja_salvos"] == [1]
-    assert saved.load(root / "overrides/salvos.csv")[1]["contexto"] == "comédia romântica"
+def test_feedback_and_keyword_lookup(local_cli):
+    runner, _, _ = local_cli
     packet = invoke_json(runner, ["feedback", "1", "bom"])
     assert packet["tmdb_id"] == 1 and packet["veredito"] == "bom"
-    monkeypatch.setattr(cli.avail_mod, "fetch", AsyncMock(return_value={
-        2: {"flatrate": [{"provider_name": "Netflix"}]}}))
-    packet = invoke_json(runner, ["salvos"])
-    assert [f["tmdb_id"] for f in packet["filmes"]] == [2]
-    assert packet["filmes"][0]["assinados"] == ["Netflix"]
-    assert packet["total_salvos"] == 2
-    assert "JustWatch" in packet["atribuicao"]
-
-
-def test_empty_saved_and_keyword_lookup(local_cli):
-    runner, _, _ = local_cli
-    assert invoke_json(runner, ["salvos"])["filmes"] == []
     assert invoke_json(runner, ["keywords", "romantic"])["keywords"] == [
         {"nome": "romantic comedy", "filmes": 2}]
     assert invoke_json(runner, ["keywords", "inexistente"])["keywords"] == []
@@ -145,12 +129,11 @@ def test_interaction_actions_and_contextual_feedback(local_cli, monkeypatch):
     result = invoke_json(runner, ["feedback", "1", "not_now", "--interaction", iid])
     assert result["exclude"] == [1]
     assert not (root / "overrides/feedback.csv").exists()
-    invoke_json(runner, ["salvar", "2", "--interaction", iid])
     log = invoke_json(runner, ["interaction", iid])
     assert log["mode"] == "explore"
     assert [r["rank"] for r in log["opcoes"]] == [1, 2]
     assert log["opcoes"][0]["sources"] == ["similar"]
-    assert {r["acao"] for r in log["acoes"]} == {"saved", "not_now"}
+    assert {r["acao"] for r in log["acoes"]} == {"not_now"}
     # Contexto não vira exclusão permanente nem afinidade negativa.
     assert [f["tmdb_id"] for f in invoke_json(runner, ["now", "--n", "2"])["filmes"]] == [1, 2]
     bad = runner.invoke(cli.app, ["feedback", "999", "disliked", "--interaction", iid])

@@ -1,7 +1,7 @@
 """Score dos candidatos.
 
     base  = Σ_tipo peso_tipo × agg(afinidade)       agg = soma (keywords) ou média (pessoas, país, ...)
-    score = base × penalidade_pop × boost_watchlist   (watchlist ou salvos)
+    score = base × penalidade_pop × boost_watchlist   (watchlist)
     penalidade_pop = 1 / (1 + α · log1p(vote_count))
 """
 
@@ -49,7 +49,7 @@ def compute(con: duckdb.DuckDBPyConnection, cfg: dict, *, eligibility_ready: boo
     )
     SELECT b.tmdb_id, b.sources, b.base,
            1 / (1 + $alpha * ln(1 + coalesce(m.vote_count, 0))) AS pop_penalty,
-           CASE WHEN list_has_any(b.sources, ['watchlist', 'salvo']) THEN $boost ELSE 1 END AS boost,
+           CASE WHEN list_contains(b.sources, 'watchlist') THEN $boost ELSE 1 END AS boost,
            b.base * pop_penalty * boost AS score,
            e.eligible
     FROM base b JOIN film_meta m USING (tmdb_id) JOIN eligibility e USING (tmdb_id)

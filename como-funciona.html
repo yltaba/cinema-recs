@@ -337,7 +337,7 @@ footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--m
         filmes com nota ≥ 4 — já vêm no payload.</p><span class="tag">grátis</span></div>
       <div class="card src b"><h3>🎬 Filmografias</h3><p>Obras dos 25 diretores, 10 fotógrafos e 10 roteiristas com
         maior afinidade.</p><span class="tag">por afinidade</span></div>
-      <div class="card src c"><h3>📌 Watchlist e 🔖 salvos</h3><p>Isentos dos filtros e com multiplicador
+      <div class="card src c"><h3>📌 Watchlist</h3><p>Isentos dos filtros e com multiplicador
         <code>×1,3</code> no score.</p><span class="tag">boost</span></div>
       <div class="card src d"><h3>🌱 Seeds</h3><p>Listas curadas opcionais em <code>seeds/*.csv</code>
         (<code>name,year</code>). Também isentas.</p><span class="tag">curadoria</span></div>
@@ -359,7 +359,7 @@ footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--m
     <div class="sec-head"><span class="sec-num">04</span><div>
       <h2>O score</h2>
       <p class="sec-intro">A afinidade do perfil gera uma base; um fator de popularidade evita que só blockbusters
-        dominem; watchlist e salvos ganham um empurrão.</p>
+        dominem; a watchlist ganha um empurrão.</p>
     </div></div>
 
     <div class="formula" style="font-size:1rem">
@@ -484,7 +484,7 @@ footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--m
       <div class="card"><h3>🚧 Filtros rígidos</h3><p class="note">Gênero, duração, idioma, país, anos e keywords
         evitadas eliminam o filme. <code>--avoid gore</code> elimina também "extreme gore".</p></div>
       <div class="card"><h3>🔁 Refinar e lembrar</h3><p class="note">"Mais curto", "esse já vimos" mantém as restrições
-        anteriores. <code>recs salvar</code> e <code>recs feedback bom|nao|ja_vi</code> gravam em <code>overrides/</code>.</p></div>
+        anteriores. <code>recs feedback bom|nao|ja_vi</code> gravam em <code>overrides/</code>.</p></div>
     </div>
   </div>
 </section>
@@ -530,7 +530,7 @@ footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--m
       <div class="card rule"><div class="ico">💾</div><div><h3>Cache agressivo</h3>
         <p>Metadados por 90 dias, provedores por 7. Cada filme custa uma chamada, e o payload é enxugado de ~115 KB para ~11 KB.</p></div></div>
       <div class="card rule"><div class="ico">🔐</div><div><h3>Dados pessoais locais</h3>
-        <p>Banco, export, feedback e salvos ficam na máquina. A chave do TMDB vive só no <code>.env</code>, fora do git.</p></div></div>
+        <p>Banco, export e feedback ficam na máquina. A chave do TMDB vive só no <code>.env</code>, fora do git.</p></div></div>
     </div>
   </div>
 </section>
@@ -579,11 +579,11 @@ const stages = [
     det: ['Peso por filme: nota − sua média (sem nota 0,1; like +0,2; feedback bom 0,3).',
           'Afinidade = Σw / (n + 2), com idf normalizado para keywords. Veja a seção 02.'] },
   { ico: '🗂️', name: 'Candidatos', cmd: 'recs recommend', mod: 'candidates.py', out: 'candidates', desc: 'Vizinhos, filmografias, watchlist, seeds.',
-    det: ['Junta recomendações/similares dos filmes ≥ 4, filmografias das pessoas com mais afinidade, watchlist, salvos e seeds.',
+    det: ['Junta recomendações/similares dos filmes ≥ 4, filmografias das pessoas com mais afinidade, watchlist e seeds.',
           'Remove vistos e feedback <code>nao</code>/<code>ja_vi</code>; pré-filtro de votos ≥ 20 e já lançado.'] },
   { ico: '⚖️', name: 'Score', cmd: 'recs recommend', mod: 'score.py', out: 'scores, contributions', desc: 'Afinidade × popularidade × boost.',
     det: ['Soma ponderada das afinidades (média para pessoas/país/idioma, soma para keywords).',
-          'Penalidade de popularidade com α = 0,08; boost 1,3 para watchlist e salvos.',
+          'Penalidade de popularidade com α = 0,08; boost 1,3 para watchlist.',
           'Guarda as contribuições para explicar os 3 principais motivos; máx. 2 filmes por diretor.'] },
   { ico: '📺', name: 'Disponibilidade', cmd: 'recs recommend', mod: 'availability.py', out: 'BR', desc: 'Streaming × explorar.',
     det: ['JustWatch via TMDB, região BR, cache de 7 dias.', 'Streaming = flatrate, free, ads; explorar = rent, buy ou nada.',

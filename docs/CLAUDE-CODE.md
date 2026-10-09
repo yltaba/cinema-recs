@@ -8,7 +8,7 @@ O ranking, a configuração e os dados pessoais continuam no pipeline Python, e 
 
 - [CLAUDE.md](../CLAUDE.md): regras permanentes, ambiente, testes e mapa. Carregado em toda sessão na pasta.
 - [Skill filme](../.claude/skills/filme/SKILL.md): interpretação de pedidos, refinamentos, apresentação,
-  salvos e feedback. Aparece como `/filme`, e o Claude também a usa sozinho em pedidos de filmes.
+  feedback. Aparece como `/filme`, e o Claude também a usa sozinho em pedidos de filmes.
 - [.claude/settings.json](../.claude/settings.json): permissões do projeto. Libera `uv run recs`/`pytest` e
   nega leitura do `.env`. Ajustes pessoais vão em `.claude/settings.local.json` (fora do Git).
 

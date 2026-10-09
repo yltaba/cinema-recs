@@ -22,7 +22,6 @@ Disponibilidade é metadado por padrão; somente flags explícitas ativam seu fi
 | `pipeline.py` | orquestra a consulta compartilhada por now/explore/recommend; diagnósticos |
 | `feedback.py` | vocabulário canônico, aliases e CSV persistente |
 | `interactions.py` | consultas e ações locais identificadas, sem aprendizado automático |
-| `saved.py` | lista local de salvos |
 | `evaluate.py` | eval offline por holdout → `eval_runs` |
 | `report.py` | relatório Markdown |
 | `cli.py` | comandos typer |
@@ -99,7 +98,7 @@ keywords: × ln(N/df) / ln(N)              (idf normalizado: keyword presente em
 
 1. `recommendations` e `similar` dos filmes com nota ≥ 4 (já estão no payload);
 2. filmografias dos 25 diretores, 10 fotógrafos e 10 roteiristas com maior afinidade;
-3. watchlist do Letterboxd e salvos, que são isentos dos filtros;
+3. watchlist do Letterboxd, que é isenta dos filtros;
 4. `seeds/*.csv`, também isentos.
 5. discover geral, com até três features positivas de país/idioma/gênero com pelo menos dois filmes
    de evidência; se não houver, discover geral sem feature. Configurável em `[retrieval]`.
@@ -114,7 +113,7 @@ Um pré-filtro barato (votos ≥ 20, já lançado) evita enriquecer filmes que s
 
 ```
 base  = Σ_tipo peso_tipo × agg(afinidade)      agg = soma para keywords; média no filme para os outros tipos
-score = base × 1/(1 + α·ln(1 + votos)) × boost  α = 0,08; boost = 1,3 para watchlist/salvos
+score = base × 1/(1 + α·ln(1 + votos)) × boost  α = 0,08; boost = 1,3 para watchlist
 ```
 
 Pessoas, país e idioma entram pela média no filme para que uma antologia com 20 diretores não some 20
@@ -201,10 +200,10 @@ Não há mais corte em 3.000 scores nem corte prévio em 200 candidatos. Há or�
 verificação de disponibilidade obrigatória. Diagnósticos incluem contagens cumulativas por filtro.
 
 O `CLAUDE.md` contém as regras permanentes do Claude Code; `.claude/skills/filme/SKILL.md` contém o roteiro de
-tradução de pedidos para flags, refinamentos, salvos e feedback. A interpretação fica com o modelo,
+tradução de pedidos para flags, refinamentos e feedback. A interpretação fica com o modelo,
 e o `recs` continua determinístico e testável. Não há chamada a modelo de linguagem no pipeline Python.
 
-`now`, `explore`, `profile`, `interaction`, `keywords`, `salvar`, `salvos` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
+`now`, `explore`, `profile`, `interaction`, `keywords` e `feedback` aceitam `--json`, com `schema_version: 1` nas respostas de
 sucesso. Os campos existentes de `now` foram preservados. Histórico do contrato em `historico/MIGRACAO-CODEX.md`.
 Erros ainda usam código de saída não zero e stderr, sem contrato JSON unificado.
 

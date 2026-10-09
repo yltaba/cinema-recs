@@ -1,6 +1,6 @@
 ---
 name: filme
-description: Recomenda filmes usando o perfil pessoal do cinema-recs, refina pedidos e consulta ou grava salvos e feedback pela CLI local. Use para pedidos de filmes neste projeto, não para manutenção de código ou pesquisa genérica sobre cinema.
+description: Recomenda filmes usando o perfil pessoal do cinema-recs, refina pedidos e grava feedback pela CLI local. Use para pedidos de filmes neste projeto, não para manutenção de código ou pesquisa genérica sobre cinema.
 ---
 
 # Filmes pelo Claude Code
@@ -66,9 +66,6 @@ Mantenha na conversa os filtros aplicados e os IDs de cada opção apresentada. 
 duração. Em "esse já vimos", acumule a exclusão com as anteriores. Se a referência for ambígua, esclareça
 qual filme antes de gravar ou excluir. Não invente continuidade de contexto entre sessões.
 
-Para opções novas, leia os IDs de `overrides/salvos.csv` e passe-os em `--exclude`, junto às exclusões do pedido.
-Não exclua os salvos quando o usuário quiser reconsiderá-los. `recs salvos --json` consulta pendentes e provedores.
-
 Leia `avisos` e `diagnostico`: disponibilidade obrigatória é verificada em lotes; `stop_reason=limit`
 significa candidatos ainda não verificados, e `exhausted` significa pool esgotado. Não confunda ambos.
 Corrija argumento inválido ou preferência sem correspondência no máximo uma vez por pedido,
@@ -88,7 +85,7 @@ Mostre título, ano, diretor, duração, serviços conhecidos (assinados primeir
 Não invente sinopse, nota pessoal ou disponibilidade. A disponibilidade é do cache TMDB/JustWatch e pode mudar.
 Não use relatórios antigos como prova de onde assistir hoje. Termine com `atribuicao` da saída.
 `disponibilidade_conhecida=false` não prova ausência do filme em todos os serviços. `score_pessoal` é
-afinidade; `score` mantém ajustes legados de popularidade/watchlist/salvos; `score_contexto` incorpora
+afinidade; `score` mantém ajustes legados de popularidade/watchlist; `score_contexto` incorpora
 keywords preferidas. Nenhum deles inclui provedores. Use `fontes` para explicar como o filme entrou no pool.
 
 Para perguntas sobre gosto, consulte `uv run recs profile --json`; use `features`, `evidencias` e `resumo`.
@@ -96,10 +93,8 @@ Não trate pouca evidência como preferência consolidada. Não execute uma nova
 
 ## Salvar e dar feedback
 
-- "Salve essas": execute `uv run recs salvar <ids apresentados...> --contexto "<resumo>" --interaction <interaction_id> --json`.
-  Salve somente as opções referidas; confira a saída. O comando evita duplicatas.
-  Omita `--interaction` quando não houver ID conhecido; não invente associação com a última consulta.
-- "O que temos salvo?": `uv run recs salvos --json`; apresente os pendentes com os provedores retornados.
+- Não há lista de salvos local. A watchlist do Letterboxd é a única lista "para ver": se o usuário pedir para
+  salvar, explique que isso é feito lá e que entra aqui no próximo export manual. Não grave nada local.
 - "Assisti X e gostei": ofereça registrar `liked`. Se já disser "registre que gostei de X", execute diretamente
   `uv run recs feedback <id> liked --json`, acrescentando `--interaction <id>` quando a associação for conhecida.
 - `liked` entra com peso positivo e indica assistido; `disliked` registra que não gostou, sem aprender peso

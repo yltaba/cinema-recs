@@ -23,7 +23,7 @@ Abra o Claude Code nesta pasta e peça, por exemplo:
 
 > Quero uma comédia policial para hoje, até 110 minutos, nos meus streamings.
 
-Depois refine: "até 90 minutos", "esse segundo já vimos", "salve o primeiro". O Claude Code opera a CLI local,
+Depois refine: "até 90 minutos", "esse segundo já vimos". O Claude Code opera a CLI local,
 apresenta os dados retornados e mantém as restrições da conversa. Para chamar o roteiro explicitamente,
 use `/filme` junto ao pedido. Sem país ou idioma pedidos, a lista é equilibrada entre origens.
 
@@ -84,7 +84,7 @@ uv run pytest -p no:cacheprovider
 | `.claude/settings.json` | permissões do projeto (nega leitura do `.env`) |
 | `tests/` | testes (pytest, sem rede) |
 | `config.toml` | pesos, limites e serviços assinados |
-| `overrides/` | arquivos editáveis: correções de matching, feedback, salvos |
+| `overrides/` | arquivos editáveis: correções de matching, feedback |
 | `seeds/` | listas curadas opcionais (`*.csv` com `name,year`) |
 | `reports/` | relatórios gerados |
 | `data/` | export descompactado e banco DuckDB (fora do git) |

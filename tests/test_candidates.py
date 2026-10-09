@@ -69,7 +69,6 @@ def test_generate_unions_sources_and_excludes_seen_after_discover(tmp_path, monk
     seeds.mkdir()
     (seeds / "curated.csv").write_text("name,year\nSeed,2000\n", encoding="utf-8")
     monkeypatch.setattr(candidates.match_mod, "resolve", AsyncMock(return_value=SimpleNamespace(tmdb_id=6)))
-    candidates.saved_mod.add(tmp_path / "overrides/salvos.csv", [(5, "Saved")])
     with duckdb.connect() as con:
         con.execute(SCHEMA)
         con.execute("CREATE TABLE profile_films(tmdb_id INT, rating DOUBLE)")
@@ -82,10 +81,10 @@ def test_generate_unions_sources_and_excludes_seen_after_discover(tmp_path, monk
         con.execute("INSERT INTO lb_films(lb_uri, watched, in_watchlist) VALUES ('u4', false, true)")
         con.execute("INSERT INTO film_map VALUES ('u4',4,'exact',1)")
         pool = asyncio.run(candidates.generate(con, tmdb, cfg, {1, 3}, seeds))
-        assert set(pool.sources) == {2, 4, 5, 6, 7, 8}
+        assert set(pool.sources) == {2, 4, 6, 7, 8}
         assert pool.sources[2] == {"recommendations", "similar"}
         assert pool.sources[8] == {"discover:profile:country:JP"}
-        assert pool.exempt == {4, 5, 6}
+        assert pool.exempt == {4, 6}
         cfg["availability"]["provedores_assinados"] = ["Completely different catalog"]
         other = asyncio.run(candidates.generate(con, tmdb, cfg, {1, 3}, seeds))
         assert other.sources == pool.sources

@@ -19,12 +19,12 @@ O Claude Code transforma o pedido num `recs now --json` (ou `explore --json`), r
 uma e onde assistir. Depois disso você pode:
 
 - **Refinar o pedido:** "mais curto", "algo brasileiro", "esse já vimos".
-- **Salvar sugestões:** "salve essas".
+- **Guardar para ver:** adicione à watchlist no Letterboxd; ela entra aqui no próximo export.
 - **Contar o que achou:** diga "assisti o X, gostei"; o Claude Code oferece registrar o feedback.
   "Registre que gostei de X" já autoriza o registro, sem confirmação adicional.
 
 As regras permanentes estão em [CLAUDE.md](CLAUDE.md), e o roteiro na
-[skill filme](.claude/skills/filme/SKILL.md). Em uma nova sessão, salvos e feedback continuam nos arquivos;
+[skill filme](.claude/skills/filme/SKILL.md). Em uma nova sessão, o feedback continua nos arquivos;
 os filtros de uma conversa anterior precisam ser informados novamente.
 
 Em refinamentos, o Claude Code mantém as restrições anteriores. Se faltarem resultados, apresenta os encontrados
@@ -59,7 +59,7 @@ uv run recs now -g comedia --max-runtime 110 --subscribed-only `
 | `--exclude` | ids TMDB que ficam de fora só nesta consulta |
 | `--n` | quantos filmes mostrar (padrão 8) |
 | `--markdown caminho.md` | relatório opcional, também em `explore` |
-| `--json` | saída estruturada para o agente; disponível também em `keywords`, `salvar`, `salvos` e `feedback` |
+| `--json` | saída estruturada para o agente; disponível também em `keywords` e `feedback` |
 
 Para descobrir o nome exato de uma keyword:
 
@@ -72,15 +72,9 @@ uv run recs keywords comedy
 
 ## 2. Lista "para ver"
 
-```powershell
-uv run recs salvar 856 9430 --contexto "comédia policial"   # guarda os filmes (ids da coluna tmdb)
-uv run recs salvos                                         # pendentes, com onde assistir hoje
-```
-
-- Os salvos ficam em `overrides/salvos.csv`.
-- A CLI inclui salvos no pool, com o mesmo multiplicador da watchlist (🔖 no relatório).
-  Ao pedir opções novas na conversa, o Claude Code os exclui daquela consulta; você pode pedir para reconsiderá-los.
-- Saem da lista de pendentes quando você os marca com `feedback` ou quando aparecem como vistos num novo export.
+A lista "para ver" é a watchlist do Letterboxd. Para guardar um filme, adicione-o lá; ele entra aqui no próximo
+export manual (seção 5), como candidato sempre presente e com multiplicador no score (📌 no relatório).
+Não há lista de salvos local.
 
 ## 3. Dizer o que achou
 
@@ -96,7 +90,7 @@ uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugest
   `liked` preserva o peso positivo existente e indica assistido; `disliked` não aprende peso negativo ainda.
 - `not_now --interaction <id>` registra exclusão apenas contextual, sem CSV permanente. Acumule os IDs
   retornados em `--exclude` no refinamento. Consultas independentes não herdam essa exclusão.
-- `salvar` e `feedback` aceitam `--interaction <id>` para relacionar a ação à consulta que apresentou o filme.
+- `feedback` aceita `--interaction <id>` para relacionar a ação à consulta que apresentou o filme.
   `recs interaction <id> --json` consulta o registro. Não há aprendizado automático das interações.
 - O feedback complementa o Letterboxd: avaliar e registrar o filme lá continua sendo o sinal mais forte, porque
   entra no próximo export.
@@ -116,7 +110,7 @@ O relatório traz uma lista única, independente do catálogo, com:
 - os três principais motivos (por exemplo "diretor: Luis Buñuel · idioma: French");
 - onde assistir, com os serviços assinados em negrito.
 
-As marcas no título são 📌 para watchlist e 🔖 para salvo.
+A marca no título é 📌 para watchlist.
 
 ## 5. Atualizar com um novo export do Letterboxd
 
