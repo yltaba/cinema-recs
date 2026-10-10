@@ -102,6 +102,8 @@ keywords preferidas. Nenhum deles inclui provedores. Use `fontes` para explicar 
 O motivo `quem gostou de: X` e a fonte `movielens` são o sinal colaborativo do MovieLens: quem deu nota alta a X
 (um filme que você viu) também deu a este. Não é recomendação de pessoa específica nem dado do Letterboxd.
 
+Para "o sistema está acertando?", use `uv run recs eval-online --json` (só leitura): compare `media_indicados`
+com `media_sem_indicacao_periodo`, cite os tamanhos de amostra e os `avisos`; com poucas notas, não conclua.
 Para perguntas sobre gosto, consulte `uv run recs profile --json`; use `features`, `evidencias` e `resumo`.
 Não trate pouca evidência como preferência consolidada. Não execute uma nova busca de filmes só para explicar o perfil.
 

@@ -203,6 +203,7 @@ adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nom
 | `recs keywords <termo>` | buscar nomes de keyword |
 | `recs historico "Get Out (2017)" "Corra!"` | conferir se títulos já estão no histórico (export, feedback, avaliações); aceita título original ou em português e ano opcional |
 | `recs eval [--set k=v] [--vs rótulo] [--label nome]` | avaliação offline |
+| `recs eval-online` | nota média dos filmes indicados que você viu x vistos sem indicação no período, por fonte (só leitura, sem rede) |
 
 ## Problemas comuns
 

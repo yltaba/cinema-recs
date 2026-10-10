@@ -212,6 +212,17 @@ Só ampliar o pool não muda o top: os filmes recuperados ficavam entre as posi�
 de conteúdo não os distingue. O ganho vem do sinal no score. Pesos altos maximizam o eval à custa de um ranking
 mainstream e concentrado num país (o viés conhecido do holdout); β = 0,25 foi escolhido por gosto, como o α.
 
+### Eval online
+
+`recs eval-online` (`online.py`) mede o que o holdout não mede: a nota dada aos filmes que o sistema indicou.
+Indicado é todo filme em `interactions.options`, desde a primeira vez que apareceu. Conta como assistido depois da
+indicação o que tem nota, feedback `liked`/`disliked`/`already_seen` ou registro no export com data posterior
+(a nota é a que prevalece em `ratings.resolve`; sem data não conta). A comparação justa é com a média dos filmes
+vistos sem indicação no mesmo período, já que só se avalia o que se escolheu ver; a média geral do Letterboxd
+fica como referência. Quebra por grupo de fonte (`filmografia`, `movielens`, `watchlist`, `discover`...), contando
+cada filme uma vez por grupo. Só leitura e sem rede: pode rodar no banco pessoal. Abaixo de ~20 notas avisa
+amostra pequena.
+
 ## Fase 7 — modo contexto
 
 Em `recs now` e `recs explore`, o pool geral ganha resultados de `/discover/movie` com filtros contextuais:

@@ -15,7 +15,7 @@ from rich.table import Table
 import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
-                  enrich as enrich_mod, evaluate as eval_mod, historico as historico_mod, ingest as ingest_mod, match as match_mod,
+                  enrich as enrich_mod, evaluate as eval_mod, historico as historico_mod, ingest as ingest_mod, online as online_mod, match as match_mod,
                   movielens as ml_mod,
                   profile as profile_mod, report as report_mod, score as score_mod,
                   pipeline as pipeline_mod, interactions, feedback as feedback_mod, ratings as ratings_mod)
@@ -375,6 +375,40 @@ def historico(titulos: list[str] = typer.Argument(..., help='Títulos, opcionalm
             if r["feedback"]:
                 flags.append(f"feedback {r['feedback']}")
             console.print(f"{c['termo']}: {r['titulo']} ({r['ano']}) · {', '.join(flags) or 'sem status'}")
+
+
+@app.command("eval-online")
+def eval_online(as_json: bool = typer.Option(False, "--json")):
+    """Nota dada aos filmes indicados x vistos sem indicação no mesmo período. Só leitura, sem rede."""
+    root = config.root()
+    con = db.connect()
+    interactions.ensure_schema(con)
+    titles = dict(con.execute("SELECT tmdb_id, title FROM film_meta").fetchall())
+    out = online_mod.evaluate(con, ratings_mod.load(root / "overrides" / "avaliacoes.csv"),
+                              online_mod.load_feedback_dates(root / "overrides" / "feedback.csv"), titles)
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, **out}, ensure_ascii=False))
+        return
+    if not out["indicados"]:
+        console.print("Nenhuma interação registrada.")
+        return
+    fmt = lambda m: "-" if m is None else f"{m:.2f}"
+    console.print(f"[bold]Desde {out['periodo_desde']}:[/] {out['indicados']} indicados · {out['assistidos']} assistido(s) "
+                  f"depois da indicação · {out['com_nota']} com nota")
+    console.print(f"Média dos indicados: {fmt(out['media_indicados'])} · sem indicação no período: "
+                  f"{fmt(out['media_sem_indicacao_periodo'])} (n={out['n_sem_indicacao_periodo']}) · "
+                  f"geral Letterboxd: {fmt(out['media_geral_letterboxd'])}")
+    t = Table(title="Por fonte (um filme pode ter várias)", title_justify="left")
+    for c in ("fonte", "indicados", "assistidos", "com nota", "média"):
+        t.add_column(c, justify="left" if c == "fonte" else "right")
+    for r in out["por_fonte"]:
+        t.add_row(r["fonte"], str(r["indicados"]), str(r["assistidos"]), str(r["com_nota"]), fmt(r["media"]))
+    console.print(t)
+    for f in out["filmes"]:
+        console.print(f"  {f['titulo']} ({f['tmdb_id']}): nota {fmt(f['nota'])} em {f['data']} · indicado em "
+                      f"{f['indicado_em']} (#{f['melhor_rank']}) · {', '.join(f['fontes'])}")
+    for a in out["avisos"]:
+        console.print(f"[yellow]{a}[/]")
 
 
 @app.command("eval")
