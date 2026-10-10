@@ -222,3 +222,19 @@ def test_rate_rejects_bad_input_without_writing(local_cli):
     for args in (["rate", "1", "--nota", "4.3"], ["rate", "999", "--nota", "4"]):
         assert runner.invoke(cli.app, [*args, "--json"]).exit_code != 0
     assert not (root / "overrides/avaliacoes.csv").exists()
+
+
+def test_historico_finds_export_feedback_and_translated_titles(local_cli):
+    runner, _, con = local_cli
+    con.execute("INSERT INTO lb_films VALUES ('lb/1', 'Filme 1', 2000, 3.5, true, false, false, '', NULL),"
+                "('lb/x', 'Sem Match', 1999, NULL, false, true, false, '', NULL)")
+    con.execute("INSERT INTO film_map VALUES ('lb/1', 1, 'manual', 1.0), ('lb/x', NULL, 'none', 0)")
+    con.execute("""UPDATE tmdb_raw SET payload = json_merge_patch(payload,
+        '{"translations": {"translations": [{"iso_3166_1": "BR", "data": {"title": "Título Dois!"}}]}}')
+        WHERE tmdb_id = 2""")
+    invoke_json(runner, ["feedback", "2", "already_seen"])
+    out = invoke_json(runner, ["historico", "filme 1 (2000)", "Titulo dois", "Sem Match", "Filme 1 (1980)", "Nada"])
+    found = [[(r["tmdb_id"], r["visto"], r["watchlist"]) for r in c["resultados"]] for c in out["consultas"]]
+    assert found == [[(1, True, False)], [(2, True, False)], [(None, False, True)], [], []]
+    assert out["consultas"][1]["resultados"][0]["feedback"] == "already_seen"
+    assert [c["resultados"] for c in invoke_json(runner, ["historico", "天国と地獄", "!!"])["consultas"]] == [[], []]

@@ -15,7 +15,7 @@ from rich.table import Table
 import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
-                  enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
+                  enrich as enrich_mod, evaluate as eval_mod, historico as historico_mod, ingest as ingest_mod, match as match_mod,
                   movielens as ml_mod,
                   profile as profile_mod, report as report_mod, score as score_mod,
                   pipeline as pipeline_mod, interactions, feedback as feedback_mod, ratings as ratings_mod)
@@ -349,6 +349,30 @@ def keywords(term: str = typer.Argument(..., help="Trecho do nome (em inglês)")
         return
     for name, cnt in rows:
         console.print(f"{cnt:5d}  {name}")
+
+
+@app.command("historico")
+def historico(titulos: list[str] = typer.Argument(..., help='Títulos, opcionalmente com ano: "Get Out (2017)"'),
+              as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação")):
+    """Confere se títulos já estão no histórico: export, feedback ou avaliação privada."""
+    root = config.root()
+    out = historico_mod.lookup(db.connect(), titulos,
+                               profile_mod.load_feedback(root / "overrides" / "feedback.csv"),
+                               ratings_mod.load(root / "overrides" / "avaliacoes.csv"))
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, "consultas": out}, ensure_ascii=False))
+        return
+    for c in out:
+        if not c["resultados"]:
+            console.print(f"{c['termo']}: não encontrado no histórico")
+        for r in c["resultados"]:
+            flags = [k for k, on in (("visto", r["visto"]), ("watchlist", r["watchlist"]),
+                                     ("like", r["like_letterboxd"])) if on]
+            if r["nota_letterboxd"] is not None:
+                flags.append(f"nota {r['nota_letterboxd']}")
+            if r["feedback"]:
+                flags.append(f"feedback {r['feedback']}")
+            console.print(f"{c['termo']}: {r['titulo']} ({r['ano']}) · {', '.join(flags) or 'sem status'}")
 
 
 @app.command("eval")

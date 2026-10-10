@@ -59,6 +59,11 @@ As keywords não garantem ausência de um tema. Se a exclusão for importante, d
 - Pedidos por prompt têm escopo amplo: `--prefer` pesa pouco, então a CLI é uma das fontes. Complete com
   conhecimento geral de cinema para cobrir o tema e deixe claro que a disponibilidade desses títulos não foi
   verificada pelo programa.
+- Todo título que não veio da saída da CLI (conhecimento geral, sugestão de reposição) precisa ser conferido
+  antes de apresentado, num único comando: `uv run recs historico "Get Out (2017)" "The Invitation (2015)" --json`
+  (título original com ano). Descarte os que tiverem `visto: true` e marque os de `watchlist: true`.
+  Com `exato: false`, confira título e ano antes de considerar o resultado o mesmo filme. Não encontrado
+  significa só que não está no export, feedback ou avaliações; diga que a checagem é por título.
 - Sem origem pedida, a CLI já equilibra a seleção: se um país passa de `score.max_country_share` (40%), ela
   acrescenta filmes de outros lugares com `complemento_origem: true` (ver `diagnostico.availability.origem`).
   A lista pode crescer até 2n; apresente os complementos como "de outros lugares".

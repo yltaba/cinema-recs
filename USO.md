@@ -197,6 +197,7 @@ adotar pesos. Se compensar, edite o `config.toml` e rode `recs eval --label <nom
 | `recs profile [-t director -t keyword] [--n 15]` | ver o perfil de gosto: features que mais puxam para cima e para baixo, com os filmes responsáveis |
 | `recs profile --json` | afinidades, IDs, quantidade de evidências, notas e pesos dos filmes responsáveis |
 | `recs keywords <termo>` | buscar nomes de keyword |
+| `recs historico "Get Out (2017)" "Corra!"` | conferir se títulos já estão no histórico (export, feedback, avaliações); aceita título original ou em português e ano opcional |
 | `recs eval [--set k=v] [--vs rótulo] [--label nome]` | avaliação offline |
 
 ## Problemas comuns
