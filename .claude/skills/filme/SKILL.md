@@ -104,7 +104,28 @@ Não trate pouca evidência como preferência consolidada. Não execute uma nova
 
 - Não há lista de salvos local. A watchlist do Letterboxd é a única lista "para ver": se o usuário pedir para
   salvar, explique que isso é feito lá e que entra aqui no próximo export manual. Não grave nada local.
-- "Assisti X e gostei": ofereça registrar `liked`. Se já disser "registre que gostei de X", execute diretamente
+- "Assisti X" / "vi X e achei Y": ofereça avaliar de forma privada (`recs rate`). Se o usuário quiser avaliar:
+  1. Pergunte estrelas (0,5 a 5) e like, sem repetir o que ele já disse.
+  2. Ofereça conversar sobre o filme e, a partir dela, escrever uma crítica; se recusar, grave só nota e like.
+     Se aceitar, a conversa vem antes do texto e o objetivo é ele pensar o filme, não produzir uma crítica para
+     os outros. Se ele já trouxe impressões, comece discutindo-as em vez de ir direto ao rascunho.
+     Converse de verdade: responda ao que ele disse, ofereça leituras do filme (temas, cenas, final) como
+     hipóteses que ele pode aceitar ou recusar, e termine com uma pergunta por vez. Parta do que ele sentiu e
+     do que o incomodou; não use roteiro fixo nem pressa de encerrar. Só proponha o rascunho quando ele pedir
+     ou quando a conversa parecer esgotada (e então pergunte).
+  3. Redija a crítica na primeira pessoa, no tom e vocabulário dele. As ideias vêm só dele: o que ele disse ou
+     aceitou explicitamente na conversa (ex.: "é isso"). Não inclua análise nossa que ele não endossou nem
+     informação do filme que ele não trouxe. Mostre o texto completo.
+  4. Peça aprovação do texto final. Ele pode pedir ajustes (repita 3-4) ou reescrever por conta própria.
+     Só depois de aprovado, execute uma única vez
+     `uv run recs rate <id> --nota N [--like] --critica "<texto aprovado>" [--interaction <id>] --json`.
+     Grave exatamente o texto aprovado. Não grave nada antes da aprovação, nem rascunhos.
+  5. Nunca copie a crítica para relatórios, Letterboxd ou outro serviço. Se o usuário já trouxe nota, like ou
+     um texto pronto, pule as etapas que ele já cumpriu (um texto pronto ainda pede só a aprovação).
+  O filme precisa estar no banco (ter aparecido numa busca); se não estiver, explique e peça uma busca antes.
+  `uv run recs ratings --full --json` lista avaliações e críticas. A avaliação privada vale até o filme chegar
+  pelo export; depois o Letterboxd prevalece na nota. Para refazer, registre de novo (a última prevalece).
+- "Assisti X e gostei" sem pedido de avaliar: ofereça `rate` ou registrar `liked`. Se já disser "registre que gostei de X", execute diretamente
   `uv run recs feedback <id> liked --json`, acrescentando `--interaction <id>` quando a associação for conhecida.
 - `liked` entra com peso positivo e indica assistido; `disliked` registra que não gostou, sem aprender peso
   negativo ainda; `already_seen` registra visto sem avaliação; `not_interested` exclui sem avaliar gosto.
