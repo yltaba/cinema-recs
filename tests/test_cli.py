@@ -238,3 +238,41 @@ def test_historico_finds_export_feedback_and_translated_titles(local_cli):
     assert found == [[(1, True, False)], [(2, True, False)], [(None, False, True)], [], []]
     assert out["consultas"][1]["resultados"][0]["feedback"] == "already_seen"
     assert [c["resultados"] for c in invoke_json(runner, ["historico", "天国と地獄", "!!"])["consultas"]] == [[], []]
+
+
+def test_identificar_adds_confident_match_and_enables_rate(local_cli, monkeypatch):
+    runner, root, con = local_cli
+    monkeypatch.setattr(cli.match_mod, "resolve", AsyncMock(return_value=cli.match_mod.Match(7, "exact", 1.0)))
+
+    async def fetch_movies(con_, tmdb, ids, ttl, region="BR"):
+        data = {"id": 7, "title": "Cure", "original_title": "キュア", "release_date": "1997-12-27", "runtime": 111,
+                "genres": [], "keywords": {"keywords": []},
+                "credits": {"crew": [{"id": 9, "name": "Kiyoshi Kurosawa", "job": "Director"}]}}
+        con_.execute("INSERT INTO tmdb_raw VALUES (?, now(), ?)", [ids[0], json.dumps(data)])
+        return cli.enrich_mod.EnrichStats(requested=1, fetched=1)
+    monkeypatch.setattr(cli.enrich_mod, "fetch_movies", fetch_movies)
+    out = invoke_json(runner, ["identificar", "Cure", "--ano", "1997"])
+    assert out["filme"] == {"tmdb_id": 7, "titulo": "Cure", "titulo_original": "キュア", "ano": 1997,
+                            "duracao": 111, "diretor": "Kiyoshi Kurosawa"}
+    assert invoke_json(runner, ["rate", "7", "--nota", "4"])["nota"] == 4.0
+
+
+def test_identificar_ambiguous_writes_nothing(local_cli, monkeypatch):
+    runner, _, con = local_cli
+    cands = [(0.86, {"id": 30, "title": "Medo", "release_date": "2003-01-01"}),
+             (0.84, {"id": 31, "title": "Medo", "release_date": "1997-01-01"})]
+    monkeypatch.setattr(cli.match_mod, "resolve",
+                        AsyncMock(return_value=cli.match_mod.Match(30, "fuzzy", 0.86, cands)))
+    fetch = AsyncMock()
+    monkeypatch.setattr(cli.enrich_mod, "fetch_movies", fetch)
+    out = invoke_json(runner, ["identificar", "Medo"])
+    assert out["filme"] is None and [c["tmdb_id"] for c in out["candidatos"]] == [30, 31]
+    assert out["candidatos"][1]["ano"] == 1997
+    fetch.assert_not_called()
+    assert con.execute("SELECT count(*) FROM tmdb_raw").fetchone()[0] == 2
+
+
+def test_identificar_requires_exactly_one_of_title_or_id(local_cli):
+    runner, _, _ = local_cli
+    for args in (["identificar"], ["identificar", "Cure", "--id", "7"]):
+        assert runner.invoke(cli.app, [*args, "--json"]).exit_code != 0

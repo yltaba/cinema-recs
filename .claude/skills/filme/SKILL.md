@@ -127,7 +127,11 @@ Não trate pouca evidência como preferência consolidada. Não execute uma nova
      Grave exatamente o texto aprovado. Não grave nada antes da aprovação, nem rascunhos.
   5. Nunca copie a crítica para relatórios, Letterboxd ou outro serviço. Se o usuário já trouxe nota, like ou
      um texto pronto, pule as etapas que ele já cumpriu (um texto pronto ainda pede só a aprovação).
-  O filme precisa estar no banco (ter aparecido numa busca); se não estiver, explique e peça uma busca antes.
+  Antes da etapa 1, se o `tmdb_id` não vier da conversa, identifique o filme:
+  `uv run recs identificar "<título original ou em inglês>" --ano <ano> --json` (consulta o TMDB e adiciona o
+  filme ao banco). Com `filme` preenchido, cite título, ano e diretor na própria pergunta da etapa 1, sem
+  confirmação separada. Com `filme: null`, mostre os `candidatos` e pergunte qual é; então
+  `uv run recs identificar --id <tmdb_id> --json`. Nunca escolha um candidato por conta própria.
   `uv run recs ratings --full --json` lista avaliações e críticas. A avaliação privada vale até o filme chegar
   pelo export; depois o Letterboxd prevalece na nota. Para refazer, registre de novo (a última prevalece).
 - "Assisti X e gostei" sem pedido de avaliar: ofereça `rate` ou registrar `liked`. Se já disser "registre que gostei de X", execute diretamente

@@ -466,6 +466,70 @@ def feedback(
         console.print(f"{tmdb_id}: {veredito} -> {effect}")
 
 
+@app.command("identificar")
+def identificar(
+    titulo: str = typer.Argument(None, help="Título, de preferência o original ou em inglês"),
+    ano: int = typer.Option(None, "--ano"),
+    tmdb_id: int = typer.Option(None, "--id", help="Escolhe um candidato e o adiciona ao banco"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Localiza um filme no TMDB e o adiciona ao banco (para avaliar o que não veio de uma busca)."""
+    if (titulo is None) == (tmdb_id is None):
+        raise typer.BadParameter("informe um título ou --id")
+    cfg = config.load()
+    key = config.tmdb_key()
+    con = db.connect()
+
+    async def run():
+        async with TMDB(con, key, cfg["tmdb"]["concurrency"]) as tmdb:
+            m = None
+            if tmdb_id is None:
+                m = await match_mod.resolve(tmdb, titulo, ano, cfg)
+            chosen = tmdb_id if tmdb_id is not None else (
+                m.tmdb_id if m.tmdb_id and m.confidence >= cfg["match"]["review_below"] else None)
+            st = None
+            if chosen is not None:
+                st = await enrich_mod.fetch_movies(con, tmdb, [chosen], cfg["tmdb"]["metadata_ttl_days"],
+                                                   region=cfg["availability"]["region"])
+            return m, chosen, st
+
+    try:
+        m, chosen, st = asyncio.run(run())
+    except Exception as e:  # erro de rede/API sem expor URL ou chave
+        raise typer.BadParameter(f"falha ao consultar o TMDB: {type(e).__name__}")
+    if st is not None and st.not_found:
+        raise typer.BadParameter("id inexistente no TMDB", param_hint="--id")
+    out = {"schema_version": 1, "consulta": {"titulo": titulo, "ano": ano, "id": tmdb_id}, "filme": None,
+           "candidatos": [], "metodo": m.method if m else "id", "confianca": round(m.confidence, 3) if m else None}
+    if chosen is not None:
+        enrich_mod.derive(con)
+        row = con.execute("""
+            SELECT m.tmdb_id, m.title, m.original_title, m.year, m.runtime,
+                   (SELECT string_agg(name, ', ') FROM film_people p WHERE p.tmdb_id = m.tmdb_id AND role = 'director')
+            FROM film_meta m WHERE tmdb_id = ?""", [chosen]).fetchone()
+        out["filme"] = dict(zip(("tmdb_id", "titulo", "titulo_original", "ano", "duracao", "diretor"), row))
+    else:
+        # Ambíguo ou não encontrado: nada é gravado; o usuário escolhe com --id.
+        cands = [(sc, r) for sc, r in m.candidates]
+        if m.tmdb_id and m.tmdb_id not in {r["id"] for _, r in cands}:
+            # Match estrito com confiança baixa (homônimos) não traz candidatos; recupera o título da busca em cache.
+            title, year = _tmdb_titles(con).get(m.tmdb_id, (None, ""))
+            cands.insert(0, (m.confidence, {"id": m.tmdb_id, "title": title, "release_date": year}))
+        out["candidatos"] = [{"tmdb_id": r["id"], "titulo": r.get("title"), "titulo_original": r.get("original_title"),
+                              "ano": match_mod.release_year(r), "score": round(sc, 3)} for sc, r in cands]
+    if as_json:
+        typer.echo(json.dumps(out, ensure_ascii=False))
+        return
+    f = out["filme"]
+    if f:
+        console.print(f"{f['titulo']} ({f['ano']}) · {f['diretor'] or 'diretor desconhecido'} · tmdb {f['tmdb_id']} "
+                      f"-> no banco; avalie com recs rate {f['tmdb_id']}")
+    else:
+        console.print("Sem correspondência segura. Candidatos (use --id):")
+        for c in out["candidatos"]:
+            console.print(f"  {c['tmdb_id']}  {c['titulo']} ({c['ano']})  {c['score']}")
+
+
 @app.command()
 def rate(
     tmdb_id: int = typer.Argument(...),
@@ -479,7 +543,7 @@ def rate(
     con = db.connect()
     row = con.execute("SELECT title FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
     if not row:
-        raise typer.BadParameter("filme desconhecido; ele precisa estar no banco (aparecer numa busca com recs explore/now)", param_hint="tmdb_id")
+        raise typer.BadParameter("filme desconhecido; adicione-o com recs identificar \"<título>\" --ano <ano>", param_hint="tmdb_id")
     if not ratings_mod.valid_rating(nota):
         raise typer.BadParameter("use de 0,5 a 5, em passos de 0,5", param_hint="--nota")
     if not as_json and nota is None and critica is None and sys.stdin.isatty():
