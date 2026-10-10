@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import duckdb
 
-from recs import candidates, context
+from recs import candidates, context, movielens
 
 
 def test_sources_survive_deduplication_and_storage():
@@ -88,3 +88,28 @@ def test_generate_unions_sources_and_excludes_seen_after_discover(tmp_path, monk
         cfg["availability"]["provedores_assinados"] = ["Completely different catalog"]
         other = asyncio.run(candidates.generate(con, tmdb, cfg, {1, 3}, seeds))
         assert other.sources == pool.sources
+
+
+def test_movielens_neighbors_from_synthetic_ratings(tmp_path):
+    # Usuários 1–3 gostam de A e B; o usuário 4 gosta só de C. A é o único filme visto.
+    (tmp_path / "links.csv").write_text("movieId,imdbId,tmdbId\n1,0001,100\n2,0002,200\n3,0003,300\n",
+                                        encoding="utf-8")
+    rows = ["userId,movieId,rating,timestamp"]
+    for u in (1, 2, 3):
+        rows += [f"{u},1,4.5,0", f"{u},2,4.0,0", f"{u},3,2.0,0"]
+    rows.append("4,3,5.0,0")
+    (tmp_path / "ratings.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    cfg = {"movielens": {"min_rating": 4.0, "users_per_seed": 10, "min_support": 2, "min_item_likes": 1,
+                         "neighbors_kept": 5}}
+    with duckdb.connect() as con:
+        assert movielens.neighbors(con, [100], 5) == []  # sem tabela: fonte inerte
+        con.execute("CREATE TABLE lb_films(lb_uri TEXT, watched BOOLEAN)")
+        con.execute("CREATE TABLE film_map(lb_uri TEXT, tmdb_id INTEGER)")
+        con.execute("INSERT INTO lb_films VALUES ('a', TRUE)")
+        con.execute("INSERT INTO film_map VALUES ('a', 100)")
+        stats = movielens.build(con, tmp_path, cfg)
+        assert stats["com_vizinhos"] == 1
+        row = con.execute("SELECT neighbor_id, score, support FROM ml_neighbors").fetchall()
+        assert row == [(200, 1.0, 3)]  # C não foi curtido por quem gostou de A
+        assert movielens.neighbors(con, [100], 5) == [200]
+        assert movielens.neighbors(con, [100], 0) == []

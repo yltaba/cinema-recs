@@ -1,6 +1,7 @@
 """Score dos candidatos.
 
     base  = Σ_tipo peso_tipo × agg(afinidade)       agg = soma (keywords) ou média (pessoas, país, ...)
+            + movielens_weight × Σ_filmes_do_perfil w × similaridade_MovieLens   (0 desliga)
     score = base × penalidade_pop × boost_watchlist   (watchlist)
     penalidade_pop = 1 / (1 + α · log1p(vote_count))
 """
@@ -9,12 +10,12 @@ from __future__ import annotations
 
 import duckdb
 
-from recs import eligibility
+from recs import eligibility, movielens
 
 ROLE_LABELS = {
     "director": "diretor", "writer": "roteiro", "cinematographer": "fotografia", "editor": "montagem",
     "composer": "trilha", "country": "país", "language": "idioma", "decade": "década",
-    "keyword": "keyword", "genre": "gênero",
+    "keyword": "keyword", "genre": "gênero", "movielens": "quem gostou de",
 }
 def compute(con: duckdb.DuckDBPyConnection, cfg: dict, *, eligibility_ready: bool = False) -> None:
     # Compatibilidade para chamadores antigos. O pipeline prepara filtros antes de pontuar.
@@ -40,6 +41,18 @@ def compute(con: duckdb.DuckDBPyConnection, cfg: dict, *, eligibility_ready: boo
     JOIN profile_features pf ON pf.feature_type = ff.feature_type AND pf.feature_id = ff.feature_id
     JOIN type_weights tw ON tw.feature_type = ff.feature_type
     """, {"sum_types": s["sum_feature_types"]})
+    # Sinal colaborativo: cada filme do perfil soma peso_filme × similaridade MovieLens aos seus vizinhos.
+    # Usa profile_films, então o holdout do eval nunca contribui.
+    if s.get("movielens_weight", 0) and movielens.available(con):
+        con.execute("""
+        INSERT INTO contributions
+        SELECT c.tmdb_id, 'movielens', pf.tmdb_id::TEXT, m.title, n.score, n.support,
+               $weight * pf.w * n.score
+        FROM candidates c
+        JOIN ml_neighbors n ON n.neighbor_id = c.tmdb_id
+        JOIN profile_films pf ON pf.tmdb_id = n.tmdb_id
+        JOIN film_meta m ON m.tmdb_id = pf.tmdb_id
+        """, {"weight": s["movielens_weight"]})
     con.execute("""
     CREATE OR REPLACE TABLE scores AS
     WITH base AS (

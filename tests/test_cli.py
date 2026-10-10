@@ -116,8 +116,14 @@ def test_explore_report_is_optional_and_order_is_shared(local_cli, monkeypatch):
     assert plain["filmes"] == report["filmes"]
     assert all(f["complemento_origem"] is False for f in plain["filmes"])
     assert set(plain["diagnostico"]["availability"]["origem"]) == {"cap", "dominante", "participacao", "complementos"}
-    assert "Recomendações" in target.read_text(encoding="utf-8")
-    assert "Disponível no streaming BR" not in target.read_text(encoding="utf-8")
+    assert plain["relatorio"] is None and report["relatorio"] == str(target)
+    text = target.read_text(encoding="utf-8")
+    assert "Recomendações" in text and report["interaction_id"] in text and "## Notas" in text
+    assert "Disponível no streaming BR" not in text
+    # Um relatório existente (talvez editado) nunca é sobrescrito.
+    again = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(target)])
+    assert again["relatorio"] == str(root / "reports" / "test-2.md")
+    assert target.read_text(encoding="utf-8") == text
 
 
 def test_interaction_actions_and_contextual_feedback(local_cli, monkeypatch):

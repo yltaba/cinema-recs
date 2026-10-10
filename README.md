@@ -6,11 +6,11 @@ dados do TMDB e sugere filmes com a disponibilidade no streaming brasileiro.
 ```
 export do Letterboxd ──► matching TMDB ──► enriquecimento (cache) ──► perfil de gosto
                                                                         │
-             relatório / sugestões para o momento ◄── score ◄── candidatos (TMDB)
+             relatório / sugestões para o momento ◄── score ◄── candidatos (TMDB + MovieLens)
 ```
 
 - **`recs explore --json`** faz descoberta ampla. Streaming é metadado e só restringe resultados quando
-  solicitado. `--markdown caminho.md` gera um relatório opcional; `recommend` continua como atalho de relatório.
+  solicitado. `--markdown caminho.md` grava as indicações em Markdown; pelo Claude Code, toda busca gera um em `reports/`.
 - **`recs now`** faz sugestões para o momento ("comédia policial nos meus serviços", "terror dos anos 70").
   O contexto define o recorte e o perfil define a ordem. No Claude Code, aberto nesta pasta, basta pedir em português
   (veja [USO.md](USO.md), [CLAUDE.md](CLAUDE.md) e a [skill filme](.claude/skills/filme/SKILL.md)).
@@ -61,11 +61,15 @@ A chave é gratuita em <https://www.themoviedb.org/settings/api>.
 
 ```powershell
 uv run recs ingest ..\letterboxd-export.zip   # ZIP ou pasta descompactada
-uv run recs match                               # Letterboxd → TMDB; revise overrides/unmatched.csv
+uv run recs match                               # Letterboxd → TMDB; pendências em reports/revisao-match.md
 uv run recs enrich                              # baixa metadados (só na primeira vez; depois vem do cache)
 uv run recs profile                             # confere o perfil de gosto
 uv run recs recommend                           # gera reports/AAAA-MM-DD.md
 ```
+
+Opcional, mas ativo no config: vizinhos colaborativos do [MovieLens 32M](https://grouplens.org/datasets/movielens/)
+(GroupLens, uso pessoal/pesquisa; ~240 MB). Descompacte `ratings.csv` e `links.csv` em `data/movielens/ml-32m/` e rode
+`uv run recs movielens data/movielens/ml-32m` (~20 s). Sem a tabela, a fonte e o sinal ficam inertes.
 
 O dia a dia está em [USO.md](USO.md), e os detalhes de funcionamento em
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md). O status das fases está em [PLANO.md](docs/PLANO.md).
@@ -86,7 +90,8 @@ uv run pytest -p no:cacheprovider
 | `config.toml` | pesos, limites e serviços assinados |
 | `overrides/` | arquivos editáveis: correções de matching, feedback |
 | `seeds/` | listas curadas opcionais (`*.csv` com `name,year`) |
-| `reports/` | relatórios gerados |
+| `reports/` | indicações de cada busca e revisão do matching |
 | `data/` | export descompactado e banco DuckDB (fora do git) |
 
-Dados de filmes: TMDB. Dados de streaming: JustWatch.
+Dados de filmes: TMDB. Dados de streaming: JustWatch. Sinal colaborativo: MovieLens (F. Maxwell Harper e Joseph A.
+Konstan, *The MovieLens Datasets: History and Context*, ACM TiiS, 2015).

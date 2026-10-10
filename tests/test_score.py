@@ -144,3 +144,29 @@ def test_personal_scores_do_not_depend_on_catalog_or_subscriptions(con):
         score.compute(con, {**CFG, "availability": {"provedores_assinados": providers}})
         snapshots.append(con.execute("SELECT tmdb_id, score FROM scores ORDER BY score DESC").fetchall())
     assert snapshots[0] == snapshots[1] == snapshots[2]
+
+
+def test_movielens_signal_adds_explainable_contribution_only_when_weighted():
+    import duckdb
+    from recs import score
+    cfg = {"score": {"min_vote_count": 0, "min_runtime": 0, "include_shorts": True, "include_documentaries": True,
+                     "popularity_alpha": 0.0, "sum_feature_types": ["keyword"], "movielens_weight": 0.0},
+           "profile": {"feature_weights": {"director": 3.0}}, "candidates": {"watchlist_boost": 1.0}}
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE candidates(tmdb_id INTEGER, sources TEXT[], exempt BOOLEAN)")
+        con.execute("INSERT INTO candidates VALUES (2, ['movielens'], FALSE)")
+        con.execute("CREATE TABLE film_meta(tmdb_id INTEGER, title TEXT, vote_count INTEGER, runtime INTEGER)")
+        con.execute("INSERT INTO film_meta VALUES (1, 'Visto', 100, 90), (2, 'Candidato', 100, 90)")
+        con.execute("CREATE TABLE film_genres(tmdb_id INTEGER, genre_id INTEGER, name TEXT)")
+        con.execute("CREATE TABLE film_features(tmdb_id INTEGER, feature_type TEXT, feature_id TEXT, label TEXT)")
+        con.execute("CREATE TABLE profile_features(feature_type TEXT, feature_id TEXT, label TEXT, affinity DOUBLE, n INTEGER)")
+        con.execute("CREATE TABLE profile_films(tmdb_id INTEGER, rating DOUBLE, liked BOOLEAN, w DOUBLE)")
+        con.execute("INSERT INTO profile_films VALUES (1, 5.0, FALSE, 1.0)")
+        con.execute("CREATE TABLE ml_neighbors(tmdb_id INTEGER, neighbor_id INTEGER, score DOUBLE, support INTEGER)")
+        con.execute("INSERT INTO ml_neighbors VALUES (1, 2, 0.4, 30)")
+        score.compute(con, cfg)
+        assert con.execute("SELECT base FROM scores").fetchone()[0] == 0
+        cfg["score"]["movielens_weight"] = 2.0
+        score.compute(con, cfg)
+        assert abs(con.execute("SELECT base FROM scores").fetchone()[0] - 0.8) < 1e-9
+        assert score.reasons(con, 2) == [("quem gostou de", "Visto", 0.8)]

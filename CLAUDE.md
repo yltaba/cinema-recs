@@ -18,7 +18,8 @@ e `docs/PLANO.md` conforme necessário.
 - Preserve restrições explícitas nos refinamentos. Não relaxe duração, serviços ou exclusões sem escolha do usuário.
 - Streaming é metadado por padrão. "Hoje/agora" e estar em casal não implicam filtro de disponibilidade.
   Sem restrição explícita, catálogo e assinaturas não podem alterar universo, score pessoal ou ordem.
-- `explore --json` é a entrada de descoberta ampla; Markdown é saída opcional. `now --json` usa o mesmo pipeline.
+- `explore --json` é a entrada de descoberta ampla; `now --json` usa o mesmo pipeline. Toda busca de indicações
+  grava também `--markdown reports/AAAA-MM-DD-<slug>.md` (ver skill `filme`).
 - Termine listas de filmes com: "Dados de filmes: TMDB. Dados de streaming: JustWatch."
 - Credenciais são carregadas pelo programa de `TMDB_API_KEY`/`.env` (projeto ou ancestral). Nunca leia/imprima
   o conteúdo do `.env`, chaves, headers de autenticação ou URLs com credenciais. Prefira `.env` no projeto.
@@ -48,6 +49,7 @@ Rode testes pertinentes ao código alterado. Não execute ingestão, eval ou gra
 - `config.toml`: configuração, pesos e provedores assinados.
 - `data/`: export e DuckDB, ignorados pelo Git.
 - `overrides/`: matching e feedback persistentes.
-- `reports/`: relatórios Markdown com data; disponibilidade histórica não é uma consulta atual.
+- `reports/`: indicações de cada busca em Markdown (editáveis; a CLI nunca sobrescreve) e `revisao-match.md`,
+  que só existe quando o matching tem pendências. Disponibilidade histórica não é uma consulta atual.
 - `.claude/skills/filme/`: roteiro conversacional; `.claude/settings.json`: permissões do projeto.
 - `USO.md`: comandos e exemplos; `docs/CLAUDE-CODE.md`: interface pelo Claude Code e estado da migração.

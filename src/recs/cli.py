@@ -15,6 +15,7 @@ import time
 
 from recs import (availability as avail_mod, candidates as cand_mod, config, context as context_mod, db,
                   enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
+                  movielens as ml_mod,
                   profile as profile_mod, report as report_mod, score as score_mod,
                   pipeline as pipeline_mod, interactions, feedback as feedback_mod)
 from recs.tmdb import TMDB
@@ -74,7 +75,6 @@ def match():
 
     methods = Counter(m.method for _, m in results)
     auto = [(f, m) for f, m in results if not m.method.startswith("override")]
-    auto_ok = sum(1 for _, m in auto if m.tmdb_id)
     t = Table(title="Métodos de match")
     t.add_column("método")
     t.add_column("n", justify="right")
@@ -95,11 +95,11 @@ def match():
                        key=lambda x: x[1].confidence)
     unmatched = [(f, m) for f, m in results if m.method == "unmatched"]
 
+    titles = _tmdb_titles(con)
     if ambiguous:
         t = Table(title=f"Ambíguos (aceitos, confiança < {review_below})")
         for c in ("filme", "ano", "tmdb", "título TMDB", "método", "conf."):
             t.add_column(c)
-        titles = _tmdb_titles(con)
         for f, m in ambiguous:
             title, year = titles.get(m.tmdb_id, ("?", "?"))
             t.add_row(f["name"], str(f["year"]), str(m.tmdb_id), f"{title} ({year})", m.method, f"{m.confidence:.2f}")
@@ -114,7 +114,9 @@ def match():
             t.add_row(f["name"], str(f["year"]), "sim" if f["watched"] else "", cands)
         console.print(t)
 
-    _write_match_report(root / "reports" / f"{date.today()}-match.md", results, ambiguous, unmatched, auto_ok, len(auto))
+    review = root / "reports" / "revisao-match.md"
+    if report_mod.write_match_review(review, ambiguous, unmatched, titles):
+        console.print(f"Revisão em {review.relative_to(root)}")
 
 
 @app.command()
@@ -156,6 +158,24 @@ def enrich():
                (SELECT count(*) FROM film_meta m WHERE NOT EXISTS (SELECT 1 FROM film_keywords k WHERE k.tmdb_id = m.tmdb_id))
         FROM film_meta""").fetchone()
     console.print(f"Sem duração: {gaps[0]} · vote_count < 20: {gaps[1]} · sem keywords: {gaps[2]}")
+
+
+@app.command("movielens")
+def movielens_cmd(ml_dir: Path = typer.Argument(..., help="Pasta do MovieLens com ratings.csv e links.csv")):
+    """Calcula vizinhos colaborativos dos filmes vistos (ml_neighbors). Refaça após um novo export."""
+    cfg = config.load()
+    con = db.connect()
+    t0 = time.perf_counter()
+    try:
+        with console.status("Calculando vizinhos..."):
+            stats = ml_mod.build(con, ml_dir, cfg)
+    except FileNotFoundError as e:
+        raise typer.BadParameter(str(e))
+    console.print(f"Vistos no MovieLens: {stats['vistos_no_movielens']} · com vizinhos: {stats['com_vizinhos']} · "
+                  f"pares: {stats['pares']} · vizinhos distintos: {stats['vizinhos_distintos']} · "
+                  f"{time.perf_counter() - t0:.1f}s")
+    if not cfg["candidates"].get("movielens_per_seed"):
+        console.print("[yellow]candidates.movielens_per_seed = 0: a fonte está desligada no config.[/]")
 
 
 @app.command()
@@ -251,8 +271,11 @@ def now(
     interaction_id = interactions.record_query(con, cli_context.info_name,
                                                {**pipeline_mod.structured_context(ctx), "n": n}, rows, diagnostic, cfg)
 
+    report_path = None
     if markdown:
-        report_mod.write_explore(markdown, rows, diagnostic)
+        report_path = report_mod.write_explore(markdown, rows, diagnostic, {
+            "contexto": ctx.describe(), "mode": cli_context.info_name, "interaction_id": interaction_id,
+            "warnings": warnings})
 
     if as_json:
         out = {
@@ -278,6 +301,7 @@ def now(
                 "complemento_origem": bool(r.get("origin_complement")),
             } for r in rows],
             "avisos": warnings,
+            "relatorio": str(report_path) if report_path else None,
             "atribuicao": report_mod.ATTRIBUTION,
         }
         typer.echo(json.dumps(out, ensure_ascii=False, indent=1))
@@ -305,6 +329,8 @@ def now(
     console.print(t)
     for w in warnings:
         console.print(f"[yellow]{w}[/]")
+    if report_path:
+        console.print(f"Relatório: {report_path}")
     console.print(report_mod.ATTRIBUTION)
 
 
@@ -432,33 +458,3 @@ def _tmdb_titles(con) -> dict[int, tuple[str, str]]:
         for r in json.loads(payload).get("results", []):
             out.setdefault(r["id"], (r.get("title"), (r.get("release_date") or "")[:4]))
     return out
-
-
-def _write_match_report(path: Path, results, ambiguous, unmatched, auto_ok, auto_n) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f"# Matching Letterboxd → TMDB ({date.today()})",
-        "",
-        f"Resolvidos automaticamente: **{auto_ok}/{auto_n} ({100 * auto_ok / max(auto_n, 1):.1f}%)**",
-        "",
-        "## Ambíguos",
-        "",
-        "| filme | ano | tmdb_id | método | confiança |",
-        "|---|---|---|---|---|",
-        *(f"| {f['name']} | {f['year']} | {m.tmdb_id} | {m.method} | {m.confidence:.2f} |" for f, m in ambiguous),
-        "",
-        "## Não resolvidos",
-        "",
-        "| filme | ano | candidatos |",
-        "|---|---|---|",
-        *(
-            f"| {f['name']} | {f['year']} | "
-            + "; ".join(f'{r["id"]} {r.get("title")} ({match_mod.release_year(r)}) {s:.2f}' for s, r in m.candidates)
-            + " |"
-            for f, m in unmatched
-        ),
-        "",
-        "Dados de filmes: TMDB. Dados de streaming: JustWatch.",
-        "",
-    ]
-    path.write_text("\n".join(lines), encoding="utf-8")

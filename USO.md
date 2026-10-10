@@ -58,7 +58,7 @@ uv run recs now -g comedia --max-runtime 110 --subscribed-only `
 | `--avoid` | termos que eliminam o filme: `gore` elimina também "extreme gore" |
 | `--exclude` | ids TMDB que ficam de fora só nesta consulta |
 | `--n` | quantos filmes mostrar (padrão 8) |
-| `--markdown caminho.md` | relatório opcional, também em `explore` |
+| `--markdown caminho.md` | grava as indicações em Markdown (nunca sobrescreve; ver seção 4) |
 | `--json` | saída estruturada para o agente; disponível também em `keywords` e `feedback` |
 
 Para descobrir o nome exato de uma keyword:
@@ -98,19 +98,24 @@ uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugest
 ## 4. Relatório completo
 
 ```powershell
-uv run recs explore --json       # descoberta ampla, sem gravar relatório
-uv run recs explore --n 20 --markdown reports/exploracao.md --json
-uv run recs recommend            # compatibilidade: 20 filmes em reports/AAAA-MM-DD.md
+uv run recs explore -g comedia --n 5 --markdown reports/2026-10-09-comedias.md --json
+uv run recs explore --json       # sem --markdown: nenhum arquivo
+uv run recs recommend            # atalho: 20 filmes em reports/AAAA-MM-DD.md
 ```
 
-O relatório traz uma lista única, independente do catálogo, com:
+Pelo Claude Code, toda busca grava o relatório em `reports/AAAA-MM-DD-<slug>.md`. Um arquivo existente nunca é
+sobrescrito (o próximo vira `-2`, `-3`), então dá para editar, anotar e revisar com o agente. Cada relatório traz:
 
-- o id TMDB;
-- o título em português, com o original entre parênteses;
-- os três principais motivos (por exemplo "diretor: Luis Buñuel · idioma: French");
-- onde assistir, com os serviços assinados em negrito.
+- o contexto, o `interaction_id` e o tamanho do pool;
+- por filme: título em português com o original, ano, diretor, duração, gêneros e países;
+- onde assistir, com os serviços assinados em negrito, ou "sem dado de disponibilidade";
+- os três principais motivos, score pessoal, score e link para o TMDB;
+- o bloco "De outros lugares" (complementos de origem), avisos e uma seção `## Notas` livre.
 
-A marca no título é 📌 para watchlist.
+A marca no título é 📌 para watchlist. A disponibilidade é a do dia da busca.
+
+O `recs match` não gera relatório datado: grava `reports/revisao-match.md` só quando há ambíguos ou não
+resolvidos, e apaga o arquivo quando não há pendências.
 
 ## 5. Atualizar com um novo export do Letterboxd
 
@@ -121,6 +126,7 @@ A marca no título é 📌 para watchlist.
    uv run recs ingest ..\letterboxd-<usuario>-<data>.zip
    uv run recs match       # só busca os filmes novos; o resto vem do cache
    uv run recs enrich
+   uv run recs movielens data/movielens/ml-32m   # recalcula vizinhos dos filmes novos (~20 s)
    uv run recs recommend
    ```
 

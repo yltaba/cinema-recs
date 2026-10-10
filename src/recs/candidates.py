@@ -16,7 +16,7 @@ from pathlib import Path
 
 import duckdb
 
-from recs import context, match as match_mod
+from recs import context, match as match_mod, movielens
 
 # papel no perfil → jobs aceitos na filmografia
 FILMOGRAPHY_JOBS = {
@@ -67,6 +67,11 @@ async def generate(con: duckdb.DuckDBPyConnection, tmdb, cfg: dict, exclude: set
             for item in (p.get(kind) or {}).get("results", []):
                 if _passes(item, min_votes, today):
                     pool.add(item["id"], kind)
+
+    # 1b. vizinhos colaborativos do MovieLens dos mesmos filmes (sem pré-filtro: a elegibilidade decide
+    # depois do enriquecimento). Sem a tabela ml_neighbors ou com movielens_per_seed = 0, nada muda.
+    for tid in movielens.neighbors(con, seed_ids, c.get("movielens_per_seed", 0)):
+        pool.add(tid, "movielens")
 
     # 2–3. filmografias dos top diretores, fotógrafos e roteiristas. "affinity" ordena pela média
     # encolhida; "total" pela evidência acumulada Σw = afinidade·(n + k), que favorece quem tem vários

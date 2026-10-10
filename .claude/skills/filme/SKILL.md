@@ -12,7 +12,10 @@ e explica a saída. Não é necessário API de LLM, SDK, MCP ou acesso automatiz
 
 Use `uv run recs explore ... --json --n 5` para descoberta ampla ("me recomende um filme",
 "cinema japonês", "me surpreenda") e `uv run recs now ... --json --n 5` para pedidos do momento.
-Ambos usam o mesmo pipeline; o relatório só é criado com `--markdown <caminho>`.
+Ambos usam o mesmo pipeline. Toda busca de indicações, inclusive refinamentos, grava o relatório com
+`--markdown reports/AAAA-MM-DD-<slug>.md` (data de hoje; slug curto em minúsculas, sem acentos, do pedido:
+`2026-10-09-comedias.md`). Refinamentos reutilizam o slug: a CLI nunca sobrescreve e acrescenta `-2`, `-3`.
+O caminho efetivo vem em `relatorio` no JSON; informe-o ao apresentar.
 Construa argumentos a partir do pedido e do contexto da conversa:
 
 | Pedido | Argumentos |
@@ -84,9 +87,15 @@ Mostre título, ano, diretor, duração, serviços conhecidos (assinados primeir
 `keywords_preferidas`. Campo ausente significa informação indisponível. Score não é probabilidade de gostar.
 Não invente sinopse, nota pessoal ou disponibilidade. A disponibilidade é do cache TMDB/JustWatch e pode mudar.
 Não use relatórios antigos como prova de onde assistir hoje. Termine com `atribuicao` da saída.
+
+O relatório contém só fatos da CLI e termina com uma seção `## Notas`. Avaliações próprias (tom, se é
+francamente engraçado etc.) ficam na conversa; escreva-as em `## Notas`, marcadas como opinião do agente,
+quando o usuário pedir para anotar, revisar ou editar o relatório. Não altere as indicações geradas pela CLI.
 `disponibilidade_conhecida=false` não prova ausência do filme em todos os serviços. `score_pessoal` é
 afinidade; `score` mantém ajustes legados de popularidade/watchlist; `score_contexto` incorpora
 keywords preferidas. Nenhum deles inclui provedores. Use `fontes` para explicar como o filme entrou no pool.
+O motivo `quem gostou de: X` e a fonte `movielens` são o sinal colaborativo do MovieLens: quem deu nota alta a X
+(um filme que você viu) também deu a este. Não é recomendação de pessoa específica nem dado do Letterboxd.
 
 Para perguntas sobre gosto, consulte `uv run recs profile --json`; use `features`, `evidencias` e `resumo`.
 Não trate pouca evidência como preferência consolidada. Não execute uma nova busca de filmes só para explicar o perfil.

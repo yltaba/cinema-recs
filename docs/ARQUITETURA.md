@@ -15,6 +15,7 @@ Disponibilidade é metadado por padrão; somente flags explícitas ativam seu fi
 | `enrich.py` | baixa `/movie/{id}` → `tmdb_raw` e deriva as tabelas `film_*` |
 | `profile.py` | `film_features`, `profile_films`, `profile_features` |
 | `candidates.py` | gera o pool de candidatos → `candidates` |
+| `movielens.py` | vizinhos colaborativos do MovieLens → `ml_neighbors` |
 | `eligibility.py` | elegibilidade global independente de score e catálogo |
 | `score.py` | afinidade pessoal, componentes legados do ranking, motivos e diversidade |
 | `availability.py` | metadados de provedores; filtro explícito com verificação progressiva |
@@ -23,7 +24,7 @@ Disponibilidade é metadado por padrão; somente flags explícitas ativam seu fi
 | `feedback.py` | vocabulário canônico, aliases e CSV persistente |
 | `interactions.py` | consultas e ações locais identificadas, sem aprendizado automático |
 | `evaluate.py` | eval offline por holdout → `eval_runs` |
-| `report.py` | relatório Markdown |
+| `report.py` | indicações em Markdown e revisão do matching |
 | `cli.py` | comandos typer |
 
 ## Fase 1 — ingestão e matching
@@ -100,7 +101,9 @@ keywords: × ln(N/df) / ln(N)              (idf normalizado: keyword presente em
 2. filmografias dos 25 diretores, 10 fotógrafos e 10 roteiristas com maior afinidade;
 3. watchlist do Letterboxd, que é isenta dos filtros;
 4. `seeds/*.csv`, também isentos.
-5. discover geral, com até três features positivas de país/idioma/gênero com pelo menos dois filmes
+5. vizinhos colaborativos do MovieLens (`movielens`): os `candidates.movielens_per_seed` (20) mais próximos de
+   cada filme com nota ≥ 4, sem pré-filtro (a elegibilidade decide após o enriquecimento);
+6. discover geral, com até três features positivas de país/idioma/gênero com pelo menos dois filmes
    de evidência; se não houver, discover geral sem feature. Configurável em `[retrieval]`.
 
 As consultas por feature se unem ao pool, não filtram suas outras fontes. Todas as origens sobrevivem à
@@ -113,8 +116,17 @@ Um pré-filtro barato (votos ≥ 20, já lançado) evita enriquecer filmes que s
 
 ```
 base  = Σ_tipo peso_tipo × agg(afinidade)      agg = soma para keywords; média no filme para os outros tipos
+base += β × Σ_filmes_do_perfil w × cos_MovieLens   β = score.movielens_weight = 0,25
 score = base × 1/(1 + α·ln(1 + votos)) × boost  α = 0,08; boost = 1,3 para watchlist
 ```
+
+**Sinal colaborativo.** `recs movielens <pasta>` lê `ratings.csv` e `links.csv` do MovieLens 32M (GroupLens, ratings
+até 2023) e grava `ml_neighbors (tmdb_id, neighbor_id, score, support)` para os filmes vistos. "Gostar" é nota ≥ 4.
+Para cada filme visto, amostra até 2.000 usuários que gostaram dele (ordem por hash, determinística) e estima o
+cosseno binário `co·n_X/n_amostra / sqrt(n_X·n_Y)`, com suporte ≥ 5 e vizinho com ≥ 50 "gostei"; guarda 50 vizinhos.
+No score, cada filme do perfil contribui `β × w × cos` aos seus vizinhos (motivo "quem gostou de: X"). Como usa
+`profile_films`, o holdout do eval nunca contribui. Sem a tabela, fonte e sinal ficam inertes. Recalcule após cada
+novo export. Dos 527 vistos em 09/10/2026, 441 estão no MovieLens e 406 têm vizinhos.
 
 Pessoas, país e idioma entram pela média no filme para que uma antologia com 20 diretores não some 20
 afinidades.
@@ -182,7 +194,23 @@ Linha de base (`baseline-v2 alpha 0.08`):
 | hit@50 | 6,7% |
 | votos top 20 | 640 |
 
-O gargalo é o pool: as `recommendations` do TMDB não alcançam vários clássicos.
+O gargalo era o pool: as `recommendations` do TMDB não alcançam vários clássicos.
+
+Comparativo MovieLens (09/10/2026, export atual com 527 vistos, cópia isolada, 5 seeds, holdout 15%):
+
+| variante | recall cand. | hit@20 | hit@50 | NDCG@20 | votos top 20 | país top 20 |
+|---|---|---|---|---|---|---|
+| sem MovieLens (`ml-off`) | 44,8% | 1,0% | 1,0% | 0,007 | 725 | 0,28 |
+| só candidatos (20 por filme, β = 0) | 73,3% | 1,0% | 1,0% | 0,007 | 725 | 0,28 |
+| β = 0,1 | 73,3% | 1,9% | 3,8% | 0,014 | 1.125 | 0,30 |
+| **β = 0,25 (ativo)** | 73,3% | 6,7% | 9,5% | 0,058 | 1.706 | 0,38 |
+| β = 0,5 | 73,3% | 7,6% | 17,1% | 0,114 | 4.432 | 0,52 |
+| β = 1 | 73,3% | 15,2% | 23,8% | 0,171 | 13.791 | 0,80 |
+| β = 3 | 73,3% | 17,1% | 25,7% | 0,183 | 15.295 | 0,91 |
+
+Só ampliar o pool não muda o top: os filmes recuperados ficavam entre as posições 100 e 4.000, porque o score
+de conteúdo não os distingue. O ganho vem do sinal no score. Pesos altos maximizam o eval à custa de um ranking
+mainstream e concentrado num país (o viés conhecido do holdout); β = 0,25 foi escolhido por gosto, como o α.
 
 ## Fase 7 — modo contexto
 
@@ -208,8 +236,10 @@ sucesso. Os campos existentes de `now` foram preservados. Histórico do contrato
 Erros ainda usam código de saída não zero e stderr, sem contrato JSON unificado.
 
 Perfil de casal está fora do escopo: somente reconsiderar com segundo histórico real e uso recorrente.
-`recommend` é compatibilidade para exploração com relatório. `explore --markdown caminho.md` torna essa
-saída opcional; a interface principal é JSON da CLI usado pelo Claude Code.
+`recommend` é compatibilidade para exploração com relatório. `explore --markdown caminho.md` grava as
+indicações em Markdown; o Claude Code usa esse arquivo em toda busca (`reports/AAAA-MM-DD-<slug>.md`), e o JSON
+continua sendo a interface. `write_explore` nunca sobrescreve: um caminho existente vira `-2`, `-3`, e o caminho
+efetivo sai em `relatorio`. `recs match` grava `reports/revisao-match.md` só com ambíguos ou não resolvidos.
 
 ## Interações e feedback
 
@@ -235,6 +265,7 @@ o próximo refinamento. Não entra no CSV nem altera futuras consultas independe
 | `film_features` | (filme, tipo, id, rótulo) |
 | `profile_films`, `profile_features` | perfil de gosto |
 | `candidates`, `contributions`, `scores` | última execução do ranking |
+| `ml_neighbors` | vizinhos colaborativos do MovieLens dos filmes vistos |
 | `eval_runs` | histórico de avaliações |
 | `interactions`, `interaction_actions` | instrumentação local aditiva, sem aprendizado |
 
