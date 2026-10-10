@@ -112,12 +112,13 @@ uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugest
 ## 4. Relatório completo
 
 ```powershell
-uv run recs explore -g comedia --n 5 --markdown reports/2026-10-09-comedias.md --json
+uv run recs explore -g comedia --n 5 --markdown reports/2026/2026-10/2026-10-09-comedias.md --json
 uv run recs explore --json       # sem --markdown: nenhum arquivo
-uv run recs recommend            # atalho: 20 filmes em reports/AAAA-MM-DD.md
+uv run recs recommend            # atalho: 20 filmes em reports/AAAA/AAAA-MM/AAAA-MM-DD.md
 ```
 
-Pelo Claude Code, toda busca grava o relatório em `reports/AAAA-MM-DD-<slug>.md`. Um arquivo existente nunca é
+Pelo Claude Code, toda busca grava o relatório em `reports/AAAA/AAAA-MM/AAAA-MM-DD-<slug>.md` (um
+`--markdown reports/x.md` também vai para a pasta do mês). Um arquivo existente nunca é
 sobrescrito (o próximo vira `-2`, `-3`), então dá para editar, anotar e revisar com o agente. Cada relatório traz:
 
 - o contexto, o `interaction_id` e o tamanho do pool;
@@ -128,7 +129,7 @@ sobrescrito (o próximo vira `-2`, `-3`), então dá para editar, anotar e revis
 
 A marca no título é 📌 para watchlist. A disponibilidade é a do dia da busca.
 
-O `recs match` não gera relatório datado: grava `reports/revisao-match.md` só quando há ambíguos ou não
+O `recs match` não gera relatório datado: grava `reports/AAAA/AAAA-MM/revisao-match.md` (só a mais recente fica) só quando há ambíguos ou não
 resolvidos, e apaga o arquivo quando não há pendências.
 
 ## 5. Atualizar com um novo export do Letterboxd

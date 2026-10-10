@@ -248,9 +248,10 @@ Erros ainda usam código de saída não zero e stderr, sem contrato JSON unifica
 
 Perfil de casal está fora do escopo: somente reconsiderar com segundo histórico real e uso recorrente.
 `recommend` é compatibilidade para exploração com relatório. `explore --markdown caminho.md` grava as
-indicações em Markdown; o Claude Code usa esse arquivo em toda busca (`reports/AAAA-MM-DD-<slug>.md`), e o JSON
+indicações em Markdown; o Claude Code usa esse arquivo em toda busca (`reports/AAAA/AAAA-MM/AAAA-MM-DD-<slug>.md`; `report.place`
+leva para a pasta do mês um caminho pedido direto em `reports/`), e o JSON
 continua sendo a interface. `write_explore` nunca sobrescreve: um caminho existente vira `-2`, `-3`, e o caminho
-efetivo sai em `relatorio`. `recs match` grava `reports/revisao-match.md` só com ambíguos ou não resolvidos.
+efetivo sai em `relatorio`. `recs match` grava `revisao-match.md` na pasta do mês só com ambíguos ou não resolvidos e apaga as anteriores.
 
 ## Interações e feedback
 

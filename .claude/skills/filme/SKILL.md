@@ -13,7 +13,7 @@ e explica a saída. Não é necessário API de LLM, SDK, MCP ou acesso automatiz
 Use `uv run recs explore ... --json --n 5` para descoberta ampla ("me recomende um filme",
 "cinema japonês", "me surpreenda") e `uv run recs now ... --json --n 5` para pedidos do momento.
 Ambos usam o mesmo pipeline. Toda busca de indicações, inclusive refinamentos, grava o relatório com
-`--markdown reports/AAAA-MM-DD-<slug>.md` (data de hoje; slug curto em minúsculas, sem acentos, do pedido:
+`--markdown reports/AAAA/AAAA-MM/AAAA-MM-DD-<slug>.md` (data de hoje; slug curto em minúsculas, sem acentos, do pedido:
 `2026-10-09-comedias.md`). Refinamentos reutilizam o slug: a CLI nunca sobrescreve e acrescenta `-2`, `-3`.
 O caminho efetivo vem em `relatorio` no JSON; informe-o ao apresentar.
 Construa argumentos a partir do pedido e do contexto da conversa:

@@ -61,10 +61,10 @@ A chave é gratuita em <https://www.themoviedb.org/settings/api>.
 
 ```powershell
 uv run recs ingest ..\letterboxd-export.zip   # ZIP ou pasta descompactada
-uv run recs match                               # Letterboxd → TMDB; pendências em reports/revisao-match.md
+uv run recs match                               # Letterboxd → TMDB; pendências em reports/AAAA/AAAA-MM/revisao-match.md
 uv run recs enrich                              # baixa metadados (só na primeira vez; depois vem do cache)
 uv run recs profile                             # confere o perfil de gosto
-uv run recs recommend                           # gera reports/AAAA-MM-DD.md
+uv run recs recommend                           # gera reports/AAAA/AAAA-MM/AAAA-MM-DD.md
 ```
 
 Opcional, mas ativo no config: vizinhos colaborativos do [MovieLens 32M](https://grouplens.org/datasets/movielens/)
@@ -90,7 +90,7 @@ uv run pytest -p no:cacheprovider
 | `config.toml` | pesos, limites e serviços assinados |
 | `overrides/` | arquivos editáveis: correções de matching, feedback |
 | `seeds/` | listas curadas opcionais (`*.csv` com `name,year`) |
-| `reports/` | indicações de cada busca e revisão do matching |
+| `reports/AAAA/AAAA-MM/` | indicações de cada busca e revisão do matching, por mês |
 | `data/` | export descompactado e banco DuckDB (fora do git) |
 
 Dados de filmes: TMDB. Dados de streaming: JustWatch. Sinal colaborativo: MovieLens (F. Maxwell Harper e Joseph A.

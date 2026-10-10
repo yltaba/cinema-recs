@@ -117,7 +117,10 @@ def match():
         console.print(t)
 
     _print_rating_divergences(con)
-    review = root / "reports" / "revisao-match.md"
+    review = report_mod.month_dir(root / "reports") / "revisao-match.md"
+    for old in (root / "reports").rglob("revisao-match.md"):
+        if old != review:  # só a revisão mais recente vale
+            old.unlink()
     if report_mod.write_match_review(review, ambiguous, unmatched, titles):
         console.print(f"Revisão em {review.relative_to(root)}")
 
@@ -246,7 +249,7 @@ def now(
     provider: list[str] = typer.Option(None, help="Só nestes serviços, pelo nome exato; vários = qualquer um"),
     exclude: list[str] = typer.Option(None, help="tmdb_ids a pular só nesta consulta"),
     n: int = typer.Option(None, min=1, help="Quantos filmes (padrão: config now.n)"),
-    markdown: Path = typer.Option(None, help="Grava também um relatório Markdown neste caminho"),
+    markdown: Path = typer.Option(None, help="Grava também um relatório Markdown; em reports/ vai para reports/AAAA/AAAA-MM/"),
     as_json: bool = typer.Option(False, "--json", help="Saída JSON para o agente e automação"),
 ):
     """Recomendações pessoais; filtros opcionais e streaming como metadado por padrão."""
@@ -278,7 +281,7 @@ def now(
 
     report_path = None
     if markdown:
-        report_path = report_mod.write_explore(markdown, rows, diagnostic, {
+        report_path = report_mod.write_explore(report_mod.place(markdown, config.root() / "reports"), rows, diagnostic, {
             "contexto": ctx.describe(), "mode": cli_context.info_name, "interaction_id": interaction_id,
             "warnings": warnings})
 

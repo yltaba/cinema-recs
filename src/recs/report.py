@@ -31,6 +31,19 @@ def providers_text(a) -> str:
     return "sem oferta conhecida" if a.known else "sem dado de disponibilidade"
 
 
+def month_dir(reports: Path, day: date | None = None) -> Path:
+    """Relatórios ficam em reports/AAAA/AAAA-MM/, pelo mês em que o comando rodou."""
+    day = day or date.today()
+    return reports / f"{day:%Y}" / f"{day:%Y-%m}"
+
+
+def place(path: Path, reports: Path) -> Path:
+    """Um arquivo pedido direto em reports/ vai para a pasta do mês; outros caminhos são respeitados."""
+    if path.resolve().parent == reports.resolve():
+        return month_dir(reports) / path.name
+    return path
+
+
 def unique_path(path: Path) -> Path:
     """Nunca sobrescreve: um relatório pode ter sido editado à mão. Acrescenta -2, -3..."""
     if not path.exists():

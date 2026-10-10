@@ -1,6 +1,7 @@
 """Contrato usado pelo agente, com banco e arquivos isolados e sem rede."""
 
 import json
+from datetime import date
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -111,8 +112,9 @@ def test_explore_report_is_optional_and_order_is_shared(local_cli, monkeypatch):
     monkeypatch.setattr(cli.avail_mod, "fetch", AsyncMock(return_value={}))
     plain = invoke_json(runner, ["explore", "--n", "2"])
     assert not (root / "reports").exists()
-    target = root / "reports" / "test.md"
-    report = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(target)])
+    month = cli.report_mod.month_dir(root / "reports")
+    report = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(root / "reports" / "test.md")])
+    target = month / "test.md"  # pedido em reports/, gravado na pasta do mês
     assert plain["filmes"] == report["filmes"]
     assert all(f["complemento_origem"] is False for f in plain["filmes"])
     assert set(plain["diagnostico"]["availability"]["origem"]) == {"cap", "dominante", "participacao", "complementos"}
@@ -121,9 +123,19 @@ def test_explore_report_is_optional_and_order_is_shared(local_cli, monkeypatch):
     assert "Recomendações" in text and report["interaction_id"] in text and "## Notas" in text
     assert "Disponível no streaming BR" not in text
     # Um relatório existente (talvez editado) nunca é sobrescrito.
-    again = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(target)])
-    assert again["relatorio"] == str(root / "reports" / "test-2.md")
+    again = invoke_json(runner, ["explore", "--n", "2", "--markdown", str(root / "reports" / "test.md")])
+    assert again["relatorio"] == str(month / "test-2.md")
     assert target.read_text(encoding="utf-8") == text
+
+
+def test_explicit_report_path_outside_reports_root_is_kept(local_cli, monkeypatch):
+    runner, root, _ = local_cli
+    mock_retrieval(monkeypatch)
+    monkeypatch.setattr(cli.avail_mod, "fetch", AsyncMock(return_value={}))
+    month = cli.report_mod.month_dir(root / "reports")
+    assert month.relative_to(root / "reports").parts == (f"{date.today():%Y}", f"{date.today():%Y-%m}")
+    nested = root / "reports" / "outra" / "y.md"
+    assert invoke_json(runner, ["explore", "--n", "2", "--markdown", str(nested)])["relatorio"] == str(nested)
 
 
 def test_interaction_actions_and_contextual_feedback(local_cli, monkeypatch):
@@ -160,7 +172,7 @@ def test_profile_json_and_legacy_recommend(local_cli, monkeypatch):
     monkeypatch.setattr(cli.avail_mod, "fetch", AsyncMock(return_value={}))
     result = runner.invoke(cli.app, ["recommend", "--n", "2"])
     assert result.exit_code == 0, result.exception
-    assert len(list((root / "reports").glob("*.md"))) == 1
+    assert len(list(cli.report_mod.month_dir(root / "reports").glob("*.md"))) == 1
 
 
 @pytest.mark.parametrize("verdict", ["liked", "disliked", "not_interested", "already_seen"])
