@@ -248,6 +248,11 @@ configuração sem credenciais em `interactions`. Isso mede exposição pela CLI
 reprodução pelo usuário. `--interaction` associa explicitamente ações posteriores; não se presume a última
 consulta. Ações sem associação são registradas com ID nulo. Os registros não alimentam perfil ou ranking.
 
+Avaliações privadas (`recs rate`, `ratings.py`) ficam em `overrides/avaliacoes.csv` (`tmdb_id,titulo,nota,like,
+critica,data,interaction_id`; fora do Git). A última linha por filme prevalece. Para filmes ausentes do export,
+`profile.build(ratings=...)` aplica `w = nota − média_Letterboxd (+ liked_bonus)`; se o filme está no export,
+o Letterboxd prevalece. Todo filme avaliado sai das sugestões (`pipeline.query`). A crítica não influencia o ranking.
+
 CSV antigo é normalizado apenas na leitura (`bom → liked`, `nao → not_interested`, `ja_vi → already_seen`).
 O último feedback persistente prevalece. `liked`, `disliked` e `already_seen` indicam visto; `not_interested`
 exclui sem avaliar gosto. `not_now` exige interação e só registra ação contextual, retornando `exclude` para

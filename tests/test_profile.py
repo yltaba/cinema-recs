@@ -101,3 +101,13 @@ def test_disliked_and_not_interested_do_not_invent_negative_affinity(con):
     before = con.execute("SELECT * FROM profile_features ORDER BY feature_type, feature_id").fetchall()
     profile.build(con, CFG, feedback={5: "disliked", 6: "not_interested"})
     assert con.execute("SELECT * FROM profile_features ORDER BY feature_type, feature_id").fetchall() == before
+
+
+def test_private_rating_enters_profile_until_letterboxd_has_it(con):
+    con.execute("INSERT INTO tmdb_raw VALUES (6, now(), ?)", [json.dumps(payload(6, 50, [9]))])
+    derive(con)
+    mu = 11 / 3
+    profile.build(con, CFG, ratings={6: {"nota": 4.5, "like": True}, 1: {"nota": 1.0, "like": False}})
+    w = dict(con.execute("SELECT tmdb_id, w FROM profile_films").fetchall())
+    assert w[6] == pytest.approx(4.5 - mu + 0.2)
+    assert w[1] == pytest.approx(5 - mu)  # no export: o Letterboxd prevalece

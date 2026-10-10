@@ -84,6 +84,16 @@ uv run recs feedback 605 nao       # não quero: sai das sugestões
 uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugestões
 ```
 
+- Para avaliar com estrelas e uma crítica só sua (sem publicar no Letterboxd):
+
+  ```powershell
+  uv run recs rate 36245 --nota 4 --like --critica "Pesadelo noturno hilário."
+  uv run recs rate 36245          # interativo: pergunta nota, like e crítica
+  uv run recs ratings --full      # lista avaliações e críticas
+  ```
+
+  Fica em `overrides/avaliacoes.csv` (ignorado pelo Git). Nota e like entram no perfil como as do Letterboxd
+  até o filme aparecer no export; depois vale a nota do Letterboxd. Aceita `--interaction <id>`.
 - O feedback fica em `overrides/feedback.csv`.
 - Vale o último veredito de cada filme.
 - Novos nomes: `liked` (alias `bom`), `disliked`, `not_interested` (alias `nao`), `already_seen` (alias `ja_vi`).

@@ -2,15 +2,15 @@
 
 from dataclasses import asdict
 
-from recs import availability, candidates, context, eligibility, enrich, profile, score, feedback as feedback_mod
+from recs import availability, candidates, context, eligibility, enrich, profile, score, feedback as feedback_mod, ratings as ratings_mod
 
 
 def structured_context(ctx):
     return {**asdict(ctx), "exclude": sorted(ctx.exclude)}
 
 
-async def query(con, tmdb, cfg, ctx, n, root, feedback):
-    seen = candidates.seen_ids(con) | feedback_mod.excluded(feedback)
+async def query(con, tmdb, cfg, ctx, n, root, feedback, ratings=None):
+    seen = candidates.seen_ids(con) | feedback_mod.excluded(feedback) | ratings_mod.excluded(ratings or {})
     pool = await candidates.generate(con, tmdb, cfg, seen, root / "seeds")
     discovered = await context.discover(tmdb, ctx, cfg) - seen
     for tid in discovered:

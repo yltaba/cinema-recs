@@ -30,6 +30,8 @@ e `docs/PLANO.md` conforme necessário.
   (ex.: `config.toml`, `overrides/` e `data/recs.duckdb` copiados para `data/evalcopy/`, rodando a CLI de lá;
   o `.env` do projeto é encontrado pelos diretórios ancestrais).
 - Não existe lista de salvos local: a lista "para ver" é a watchlist do Letterboxd, que entra pelo export.
+- Avaliações privadas (`recs rate`, `overrides/avaliacoes.csv`, fora do Git) guardam nota e crítica pessoais:
+  nunca as publique nem as copie para relatórios ou serviços externos.
 - Registrar feedback é ação local: execute quando solicitadas explicitamente; um comentário
   sobre um filme permite oferecer o registro, não gravá-lo automaticamente. Não peça confirmação duplicada.
 

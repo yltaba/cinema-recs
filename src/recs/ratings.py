@@ -1,0 +1,49 @@
+"""Avaliações privadas (nota, like e crítica) de filmes assistidos fora do export do Letterboxd."""
+
+import csv
+from datetime import date
+
+COLUMNS = ["tmdb_id", "titulo", "nota", "like", "critica", "data", "interaction_id"]
+
+
+def valid_rating(nota):
+    return nota is None or (0.5 <= nota <= 5 and nota * 2 == int(nota * 2))
+
+
+def load(path):
+    """Última linha por tmdb_id prevalece. nota None = assistido sem nota."""
+    if not path.exists():
+        return {}
+    out = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f):
+            if not r.get("tmdb_id"):
+                continue
+            nota = (r.get("nota") or "").strip()
+            out[int(r["tmdb_id"])] = {
+                "titulo": r.get("titulo", ""),
+                "nota": float(nota) if nota else None,
+                "like": (r.get("like") or "").strip().lower() == "true",
+                "critica": r.get("critica", ""),
+                "data": r.get("data", ""),
+                "interaction_id": r.get("interaction_id") or None,
+            }
+    return out
+
+
+def excluded(ratings):
+    # Todo filme avaliado foi assistido.
+    return set(ratings)
+
+
+def append(path, tid, titulo, nota, like, critica="", interaction_id=None):
+    if not valid_rating(nota):
+        raise ValueError("nota deve estar entre 0,5 e 5, em passos de 0,5")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new = not path.exists() or path.stat().st_size == 0
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        if new:
+            writer.writerow(COLUMNS)
+        writer.writerow([tid, titulo, "" if nota is None else nota, "true" if like else "false",
+                         critica or "", date.today().isoformat(), interaction_id or ""])

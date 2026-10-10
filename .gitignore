@@ -17,3 +17,5 @@ _notes/
 .claude/settings.local.json
 
 reports/
+# Avaliações privadas (notas e críticas)
+overrides/avaliacoes.csv

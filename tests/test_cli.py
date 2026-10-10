@@ -194,3 +194,31 @@ def test_now_progresses_beyond_old_200_candidate_cutoff(local_cli, monkeypatch):
     assert [r["tmdb_id"] for r in packet["filmes"]] == [251]
     assert packet["diagnostico"]["availability"]["stop_reason"] == "filled"
     assert fetch.call_count == 6
+
+
+def test_rate_records_private_rating_and_excludes_film(local_cli, monkeypatch):
+    runner, root, _ = local_cli
+    mock_retrieval(monkeypatch)
+    monkeypatch.setattr(cli.avail_mod, "fetch", AsyncMock(return_value={}))
+    iid = invoke_json(runner, ["explore", "--n", "2"])["interaction_id"]
+    out = invoke_json(runner, ["rate", "1", "--nota", "4", "--like", "--critica", "Muito bom,\nde verdade", "--interaction", iid])
+    assert out["nota"] == 4.0 and out["like"] and out["critica_gravada"]
+    listed = invoke_json(runner, ["ratings", "--full"])["avaliacoes"]
+    assert listed[0]["tmdb_id"] == 1 and listed[0]["critica"] == "Muito bom,\nde verdade"
+    assert {r["acao"] for r in invoke_json(runner, ["interaction", iid])["acoes"]} == {"rated"}
+    assert not (root / "overrides/feedback.csv").exists()
+    captured = []
+
+    async def generate(con, tmdb, cfg, exclude, *args):
+        captured.append(exclude)
+        return cli.cand_mod.Pool()
+    monkeypatch.setattr(cli.cand_mod, "generate", generate)
+    monkeypatch.setattr(cli.context_mod, "discover", AsyncMock(return_value={1}))
+    assert invoke_json(runner, ["now"])["filmes"] == [] and 1 in captured[0]
+
+
+def test_rate_rejects_bad_input_without_writing(local_cli):
+    runner, root, _ = local_cli
+    for args in (["rate", "1", "--nota", "4.3"], ["rate", "999", "--nota", "4"]):
+        assert runner.invoke(cli.app, [*args, "--json"]).exit_code != 0
+    assert not (root / "overrides/avaliacoes.csv").exists()

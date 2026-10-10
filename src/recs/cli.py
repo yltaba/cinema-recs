@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -17,7 +18,7 @@ from recs import (availability as avail_mod, candidates as cand_mod, config, con
                   enrich as enrich_mod, evaluate as eval_mod, ingest as ingest_mod, match as match_mod,
                   movielens as ml_mod,
                   profile as profile_mod, report as report_mod, score as score_mod,
-                  pipeline as pipeline_mod, interactions, feedback as feedback_mod)
+                  pipeline as pipeline_mod, interactions, feedback as feedback_mod, ratings as ratings_mod)
 from recs.tmdb import TMDB
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, pretty_exceptions_show_locals=False,
@@ -189,7 +190,8 @@ def profile(
     cfg = config.load()
     con = db.connect()
     feedback = profile_mod.load_feedback(config.root() / "overrides" / "feedback.csv")
-    profile_mod.build(con, cfg, feedback=feedback)
+    ratings = ratings_mod.load(config.root() / "overrides" / "avaliacoes.csv")
+    profile_mod.build(con, cfg, feedback=feedback, ratings=ratings)
     if as_json:
         typer.echo(json.dumps(profile_mod.explain(con, cfg, type, n, bottom), ensure_ascii=False, allow_nan=False))
         return
@@ -256,12 +258,13 @@ def now(
         raise typer.BadParameter(str(e))
     con = db.connect()
     feedback = profile_mod.load_feedback(root / "overrides" / "feedback.csv")
-    profile_mod.build(con, cfg, feedback=feedback)
+    ratings = ratings_mod.load(root / "overrides" / "avaliacoes.csv")
+    profile_mod.build(con, cfg, feedback=feedback, ratings=ratings)
     t0 = time.perf_counter()
 
     async def run():
         async with TMDB(con, config.tmdb_key(), cfg["tmdb"]["concurrency"]) as tmdb:
-            rows, diagnostic, warnings = await pipeline_mod.query(con, tmdb, cfg, ctx, n, root, feedback)
+            rows, diagnostic, warnings = await pipeline_mod.query(con, tmdb, cfg, ctx, n, root, feedback, ratings)
             return rows, diagnostic, warnings, tmdb.calls
 
     status = contextlib.nullcontext() if as_json else console.status("Buscando...")
@@ -437,6 +440,69 @@ def feedback(
         typer.echo(json.dumps(out, ensure_ascii=False))
     else:
         console.print(f"{tmdb_id}: {veredito} -> {effect}")
+
+
+@app.command()
+def rate(
+    tmdb_id: int = typer.Argument(...),
+    nota: float = typer.Option(None, "--nota", help="0,5 a 5, em passos de 0,5"),
+    like: bool = typer.Option(False, "--like/--no-like"),
+    critica: str = typer.Option(None, "--critica", help="Critica privada, guardada so em overrides/avaliacoes.csv"),
+    interaction: str = typer.Option(None),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Registra avaliacao privada (nota, like, critica) de um filme assistido."""
+    con = db.connect()
+    row = con.execute("SELECT title FROM film_meta WHERE tmdb_id = ?", [tmdb_id]).fetchone()
+    if not row:
+        raise typer.BadParameter("filme desconhecido; ele precisa estar no banco (aparecer numa busca com recs explore/now)", param_hint="tmdb_id")
+    if not ratings_mod.valid_rating(nota):
+        raise typer.BadParameter("use de 0,5 a 5, em passos de 0,5", param_hint="--nota")
+    if not as_json and nota is None and critica is None and sys.stdin.isatty():
+        raw = typer.prompt("Nota (0,5 a 5; vazio = sem nota)", default="", show_default=False).replace(",", ".")
+        try:
+            nota = float(raw) if raw else None
+        except ValueError:
+            raise typer.BadParameter("nota invalida", param_hint="--nota")
+        if not ratings_mod.valid_rating(nota):
+            raise typer.BadParameter("use de 0,5 a 5, em passos de 0,5", param_hint="--nota")
+        like = typer.confirm("Like?", default=False)
+        critica = typer.prompt("Critica privada (vazio = nenhuma)", default="", show_default=False) or None
+    try:
+        interactions.validate_action(con, interaction, [tmdb_id])
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    ratings_mod.append(config.root() / "overrides" / "avaliacoes.csv", tmdb_id, row[0], nota, like, critica, interaction)
+    interactions.record_action(con, "rated", [tmdb_id], interaction, {"nota": nota, "like": like})
+    effect = "assistido; entra no perfil com a nota privada ate aparecer no export do Letterboxd e sai das sugestoes"
+    out = {"schema_version": 1, "tmdb_id": tmdb_id, "titulo": row[0], "nota": nota, "like": like,
+           "critica_gravada": bool(critica), "efeito": effect, "interaction_id": interaction}
+    if as_json:
+        typer.echo(json.dumps(out, ensure_ascii=False))
+    else:
+        console.print(f"{row[0]} ({tmdb_id}): nota {nota if nota is not None else '-'}{' + like' if like else ''} -> {effect}")
+
+
+@app.command("ratings")
+def ratings_list(
+    full: bool = typer.Option(False, "--full", help="Critica completa"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Lista as avaliacoes privadas."""
+    items = [{"tmdb_id": i, **r} for i, r in ratings_mod.load(config.root() / "overrides" / "avaliacoes.csv").items()]
+    if not full:
+        for r in items:
+            r["critica"] = r["critica"] if len(r["critica"]) <= 80 else r["critica"][:77] + "..."
+    if as_json:
+        typer.echo(json.dumps({"schema_version": 1, "avaliacoes": items}, ensure_ascii=False))
+        return
+    t = Table(title="Avaliacoes privadas")
+    for c in ("tmdb_id", "titulo", "nota", "like", "data", "critica"):
+        t.add_column(c)
+    for r in items:
+        t.add_row(str(r["tmdb_id"]), r["titulo"], "-" if r["nota"] is None else str(r["nota"]),
+                  "sim" if r["like"] else "", r["data"], r["critica"])
+    console.print(t)
 
 
 @app.command("interaction")

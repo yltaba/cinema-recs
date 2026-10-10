@@ -35,11 +35,19 @@ def load_feedback(path: Path) -> dict[int, str]:
 
 
 def build(con: duckdb.DuckDBPyConnection, cfg: dict, exclude: set[int] | None = None,
-          feedback: dict[int, str] | None = None) -> None:
-    """Cria profile_films (tmdb_id, w) e profile_features. `exclude` serve ao holdout do eval."""
+          feedback: dict[int, str] | None = None, ratings: dict[int, dict] | None = None) -> None:
+    """Cria profile_films (tmdb_id, w) e profile_features. `exclude` serve ao holdout do eval.
+
+    `ratings` são as avaliações privadas: valem como as do Letterboxd enquanto o filme não está no export."""
     p = cfg["profile"]
     build_film_features(con)
-    good = [i for i, v in (feedback or {}).items() if feedback_mod.normalize(v) == "liked" and i not in (exclude or set())]
+    ratings = ratings or {}
+    good = [i for i, v in (feedback or {}).items()
+            if feedback_mod.normalize(v) == "liked" and i not in (exclude or set()) and i not in ratings]
+    priv = {i: r for i, r in ratings.items() if i not in (exclude or set())}
+    priv_ids = sorted(priv)
+    priv_rating = [priv[i]["nota"] for i in priv_ids]
+    priv_liked = [priv[i]["like"] for i in priv_ids]
     con.execute("""
     CREATE OR REPLACE TABLE profile_films AS
     WITH seen AS (
@@ -49,15 +57,28 @@ def build(con: duckdb.DuckDBPyConnection, cfg: dict, exclude: set[int] | None = 
           AND f.tmdb_id IN (SELECT tmdb_id FROM film_meta)
           AND f.tmdb_id NOT IN (SELECT unnest($exclude::INTEGER[]))
         GROUP BY f.tmdb_id
-    ), mu AS (SELECT avg(rating) AS m FROM seen)
+    ), mu AS (SELECT avg(rating) AS m FROM seen),
+    private AS (
+        SELECT unnest($priv_ids::INTEGER[]) AS tmdb_id, unnest($priv_rating::DOUBLE[]) AS rating,
+               unnest($priv_liked::BOOLEAN[]) AS liked
+    ), priv_seen AS (
+        SELECT * FROM private
+        WHERE tmdb_id IN (SELECT tmdb_id FROM film_meta) AND tmdb_id NOT IN (SELECT tmdb_id FROM seen)
+    )
     SELECT tmdb_id, rating, liked,
            coalesce(rating - mu.m, $unrated) + CASE WHEN liked THEN $liked ELSE 0 END AS w
     FROM seen, mu
     UNION ALL
+    SELECT tmdb_id, rating, liked,
+           coalesce(rating - mu.m, $unrated) + CASE WHEN liked THEN $liked ELSE 0 END
+    FROM priv_seen, mu
+    UNION ALL
     SELECT tmdb_id, NULL, FALSE, $good_w FROM film_meta
-    WHERE tmdb_id IN (SELECT unnest($good::INTEGER[])) AND tmdb_id NOT IN (SELECT tmdb_id FROM seen)
+    WHERE tmdb_id IN (SELECT unnest($good::INTEGER[]))
+      AND tmdb_id NOT IN (SELECT tmdb_id FROM seen)
     """, {"exclude": sorted(exclude or []), "unrated": p["unrated_weight"], "liked": p["liked_bonus"],
-          "good": good, "good_w": p["feedback_good_weight"]})
+          "good": good, "good_w": p["feedback_good_weight"],
+          "priv_ids": priv_ids, "priv_rating": priv_rating, "priv_liked": priv_liked})
 
     # idf normalizado em [0, 1] sobre os filmes do perfil: keyword presente em todos → 0, em um só → 1.
     con.execute("""
