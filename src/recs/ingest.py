@@ -75,6 +75,7 @@ def build(raw: Path) -> tuple[list[dict], IngestStats]:
         f = film(r)
         f["watched"] = True
         f["rating"] = float(r["Rating"]) if r["Rating"] else None
+        bump_logged(f, r["Date"])  # data da nota: decide se uma avaliação privada é mais recente
     stats.counts["ratings"] = len(rows)
 
     for r in (rows := read_csv(raw / "watchlist.csv")):

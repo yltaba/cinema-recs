@@ -132,8 +132,8 @@ Não trate pouca evidência como preferência consolidada. Não execute uma nova
   filme ao banco). Com `filme` preenchido, cite título, ano e diretor na própria pergunta da etapa 1, sem
   confirmação separada. Com `filme: null`, mostre os `candidatos` e pergunte qual é; então
   `uv run recs identificar --id <tmdb_id> --json`. Nunca escolha um candidato por conta própria.
-  `uv run recs ratings --full --json` lista avaliações e críticas. A avaliação privada vale até o filme chegar
-  pelo export; depois o Letterboxd prevalece na nota. Para refazer, registre de novo (a última prevalece).
+  `uv run recs ratings --full --json` lista avaliações e críticas. Se o filme também está no export, vale a nota
+  mais recente (empate: a privada); `ratings --json` traz `vale` e `nota_letterboxd`. Para refazer, registre de novo (a última prevalece).
 - "Assisti X e gostei" sem pedido de avaliar: ofereça `rate` ou registrar `liked`. Se já disser "registre que gostei de X", execute diretamente
   `uv run recs feedback <id> liked --json`, acrescentando `--interaction <id>` quando a associação for conhecida.
 - `liked` entra com peso positivo e indica assistido; `disliked` registra que não gostou, sem aprender peso

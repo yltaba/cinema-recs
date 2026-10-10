@@ -25,6 +25,6 @@ def test_build_joins_diary_and_reviews_by_name_year(tmp_path):
     assert set(by) == {"https://boxd.it/F1", "https://boxd.it/F2"}
     wt = by["https://boxd.it/F1"]
     assert wt["rating"] == 4.5 and wt["watched"] and wt["liked"] and wt["review_text"] == "Ótimo."
-    assert wt["last_logged"] == "2020-01-01"  # data do watched é posterior à do diário
+    assert wt["last_logged"] == "2020-01-02"  # a nota é a atividade mais recente; o diário é anterior
     assert by["https://boxd.it/F2"]["in_watchlist"] and not by["https://boxd.it/F2"]["watched"]
     assert stats.orphans == ["Ghost (1999)"]

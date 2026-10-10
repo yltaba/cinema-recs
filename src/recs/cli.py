@@ -53,6 +53,7 @@ def ingest(export: Path = typer.Argument(..., help="ZIP do export do Letterboxd 
     if stats.orphans:
         console.print(f"[yellow]{len(stats.orphans)} entradas de diário/resenha sem filme correspondente:[/] "
                       + ", ".join(stats.orphans[:10]))
+    _print_rating_divergences(con)
 
 
 @app.command()
@@ -115,6 +116,7 @@ def match():
             t.add_row(f["name"], str(f["year"]), "sim" if f["watched"] else "", cands)
         console.print(t)
 
+    _print_rating_divergences(con)
     review = root / "reports" / "revisao-match.md"
     if report_mod.write_match_review(review, ambiguous, unmatched, titles):
         console.print(f"Revisão em {review.relative_to(root)}")
@@ -577,7 +579,9 @@ def ratings_list(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Lista as avaliacoes privadas."""
-    items = [{"tmdb_id": i, **r} for i, r in ratings_mod.load(config.root() / "overrides" / "avaliacoes.csv").items()]
+    loaded = ratings_mod.load(config.root() / "overrides" / "avaliacoes.csv")
+    status = ratings_mod.resolve(db.connect(), loaded)
+    items = [{"tmdb_id": i, **r, **{k: status[i][k] for k in ("vale", "nota_letterboxd")}} for i, r in loaded.items()]
     if not full:
         for r in items:
             r["critica"] = r["critica"] if len(r["critica"]) <= 80 else r["critica"][:77] + "..."
@@ -585,11 +589,12 @@ def ratings_list(
         typer.echo(json.dumps({"schema_version": 1, "avaliacoes": items}, ensure_ascii=False))
         return
     t = Table(title="Avaliacoes privadas")
-    for c in ("tmdb_id", "titulo", "nota", "like", "data", "critica"):
+    for c in ("tmdb_id", "titulo", "nota", "like", "data", "letterboxd", "vale", "critica"):
         t.add_column(c)
     for r in items:
         t.add_row(str(r["tmdb_id"]), r["titulo"], "-" if r["nota"] is None else str(r["nota"]),
-                  "sim" if r["like"] else "", r["data"], r["critica"])
+                  "sim" if r["like"] else "", r["data"],
+                  "-" if r["nota_letterboxd"] is None else str(r["nota_letterboxd"]), r["vale"], r["critica"])
     console.print(t)
 
 
@@ -601,6 +606,19 @@ def interaction_show(interaction_id: str, as_json: bool = typer.Option(False, "-
     except ValueError as e:
         raise typer.BadParameter(str(e))
     typer.echo(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def _print_rating_divergences(con) -> None:
+    """Avaliações privadas cuja nota difere da do export; a mais recente vale (ratings.resolve)."""
+    loaded = ratings_mod.load(config.root() / "overrides" / "avaliacoes.csv")
+    diverge = [(i, s) for i, s in ratings_mod.resolve(con, loaded).items() if s["diverge"]]
+    if not diverge:
+        return
+    console.print(f"[yellow]{len(diverge)} avaliações privadas com nota diferente da do Letterboxd[/] "
+                  "(vale a mais recente; detalhes em recs ratings):")
+    for i, s in diverge[:10]:
+        console.print(f"  {loaded[i]['titulo']} ({i}): privada {loaded[i]['nota']} em {loaded[i]['data']} · "
+                      f"Letterboxd {s['nota_letterboxd']} em {s['data_letterboxd'] or '?'} -> vale {s['vale']}")
 
 
 def _tmdb_titles(con) -> dict[int, tuple[str, str]]:

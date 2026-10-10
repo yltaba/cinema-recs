@@ -250,8 +250,10 @@ consulta. Ações sem associação são registradas com ID nulo. Os registros n�
 
 Avaliações privadas (`recs rate`, `ratings.py`) ficam em `overrides/avaliacoes.csv` (`tmdb_id,titulo,nota,like,
 critica,data,interaction_id`; fora do Git). A última linha por filme prevalece. Para filmes ausentes do export,
-`profile.build(ratings=...)` aplica `w = nota − média_Letterboxd (+ liked_bonus)`; se o filme está no export,
-o Letterboxd prevalece. Todo filme avaliado sai das sugestões (`pipeline.query`). A crítica não influencia o ranking.
+`profile.build(ratings=...)` aplica `w = nota − média_Letterboxd (+ liked_bonus)`. Se o filme está no export,
+vale a nota mais recente (`ratings.resolve`): a data da avaliação privada contra `last_logged`, a última
+atividade do filme no export (visto, diário ou nota); empate favorece a privada, e uma privada sem nota não
+substitui a do export. `ingest`, `match` e `recs ratings` mostram as divergências. Todo filme avaliado sai das sugestões (`pipeline.query`). A crítica não influencia o ranking.
 `recs identificar` adiciona ao banco um filme visto fora do sistema: `match.resolve` (título + ano) e, se a
 confiança atinge `match.review_below`, `enrich.fetch_movies` + `derive`; abaixo disso só devolve candidatos, e
 `--id` escolhe um deles. O `rate` exige o filme em `film_meta`.

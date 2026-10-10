@@ -47,3 +47,29 @@ def append(path, tid, titulo, nota, like, critica="", interaction_id=None):
             writer.writerow(COLUMNS)
         writer.writerow([tid, titulo, "" if nota is None else nota, "true" if like else "false",
                          critica or "", date.today().isoformat(), interaction_id or ""])
+
+
+def resolve(con, ratings):
+    """Qual nota vale para cada avaliação privada: a mais recente entre ela e o Letterboxd.
+
+    A data do Letterboxd é a última atividade do filme no export (visto, diário ou nota). Empate favorece a
+    privada, que costuma vir depois de pensar o filme; avaliação privada sem nota ou sem data não substitui
+    uma do export. Devolve {tmdb_id: {"vale", "nota_letterboxd", "data_letterboxd", "diverge"}}."""
+    if not ratings:
+        return {}
+    lb = {tid: (rating, logged) for tid, rating, logged in con.execute("""
+        SELECT m.tmdb_id, avg(l.rating), max(l.last_logged)
+        FROM lb_films l JOIN film_map m USING (lb_uri)
+        WHERE l.watched AND m.tmdb_id IS NOT NULL GROUP BY m.tmdb_id""").fetchall()}
+    out = {}
+    for tid, r in ratings.items():
+        if tid not in lb:
+            out[tid] = {"vale": "privada", "nota_letterboxd": None, "data_letterboxd": None, "diverge": False}
+            continue
+        lb_rating, lb_date = lb[tid]
+        lb_date = lb_date.isoformat() if lb_date else None
+        newer = r["nota"] is not None and bool(r.get("data")) and (lb_date is None or r["data"] >= lb_date)
+        out[tid] = {"vale": "privada" if newer else "letterboxd", "nota_letterboxd": lb_rating,
+                    "data_letterboxd": lb_date,
+                    "diverge": r["nota"] is not None and lb_rating is not None and r["nota"] != lb_rating}
+    return out

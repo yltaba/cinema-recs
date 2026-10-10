@@ -111,3 +111,23 @@ def test_private_rating_enters_profile_until_letterboxd_has_it(con):
     w = dict(con.execute("SELECT tmdb_id, w FROM profile_films").fetchall())
     assert w[6] == pytest.approx(4.5 - mu + 0.2)
     assert w[1] == pytest.approx(5 - mu)  # no export: o Letterboxd prevalece
+
+
+def test_most_recent_rating_prevails(con):
+    from recs import ratings
+    con.execute("UPDATE lb_films SET last_logged = DATE '2020-01-01' WHERE lb_uri IN ('u1', 'u2')")
+    priv = {1: {"nota": 1.0, "like": False, "data": "2026-10-10"},   # mais recente: vale a privada
+            2: {"nota": 1.0, "like": False, "data": "2019-12-31"},   # mais antiga: vale o Letterboxd
+            3: {"nota": None, "like": True, "data": "2026-10-10"},   # sem nota: não substitui
+            4: {"nota": 4.0, "like": False, "data": "2026-10-10"}}   # export sem data: vale a privada
+    status = ratings.resolve(con, priv)
+    assert {i: s["vale"] for i, s in status.items()} == {1: "privada", 2: "letterboxd", 3: "letterboxd", 4: "privada"}
+    assert status[1]["diverge"] and status[1]["nota_letterboxd"] == 5.0 and not status[4]["diverge"]
+    profile.build(con, CFG, ratings=priv)
+    w = dict(con.execute("SELECT tmdb_id, w FROM profile_films").fetchall())
+    mu = 11 / 3  # a média continua sendo a do Letterboxd
+    assert w[1] == pytest.approx(1.0 - mu)
+    assert w[2] == pytest.approx(4.0 - mu)
+    assert w[3] == pytest.approx(2.0 - mu)
+    assert w[4] == pytest.approx(4.0 - mu)
+    assert con.execute("SELECT count(*) FROM profile_films WHERE tmdb_id = 1").fetchone()[0] == 1

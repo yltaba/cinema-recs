@@ -93,8 +93,9 @@ uv run recs feedback 155 ja_vi     # já vi (fora do Letterboxd): sai das sugest
   uv run recs ratings --full      # lista avaliações e críticas
   ```
 
-  Fica em `overrides/avaliacoes.csv` (ignorado pelo Git). Nota e like entram no perfil como as do Letterboxd
-  até o filme aparecer no export; depois vale a nota do Letterboxd. Aceita `--interaction <id>`.
+  Fica em `overrides/avaliacoes.csv` (ignorado pelo Git). Nota e like entram no perfil como as do Letterboxd.
+  Se o filme também está no export, vale a nota mais recente (empate: a privada); `recs ratings` mostra qual vale
+  e o `ingest` avisa quando as duas notas divergem. Aceita `--interaction <id>`.
   O `rate` só aceita filmes que estão no banco. Para um filme visto fora do sistema, rode antes
   `recs identificar`; se a correspondência não for segura, ele lista candidatos sem gravar e você escolhe com `--id`.
 - O feedback fica em `overrides/feedback.csv`.

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import duckdb
 
-from recs import feedback as feedback_mod
+from recs import feedback as feedback_mod, ratings as ratings_mod
 
 FEATURE_TYPES = ["director", "writer", "cinematographer", "editor", "composer",
                  "country", "language", "decade", "keyword", "genre"]
@@ -38,13 +38,15 @@ def build(con: duckdb.DuckDBPyConnection, cfg: dict, exclude: set[int] | None = 
           feedback: dict[int, str] | None = None, ratings: dict[int, dict] | None = None) -> None:
     """Cria profile_films (tmdb_id, w) e profile_features. `exclude` serve ao holdout do eval.
 
-    `ratings` são as avaliações privadas: valem como as do Letterboxd enquanto o filme não está no export."""
+    `ratings` são as avaliações privadas: valem como as do Letterboxd para filmes fora do export e, para os que
+    estão nele, quando são mais recentes (`ratings.resolve`)."""
     p = cfg["profile"]
     build_film_features(con)
     ratings = ratings or {}
     good = [i for i, v in (feedback or {}).items()
             if feedback_mod.normalize(v) == "liked" and i not in (exclude or set()) and i not in ratings]
-    priv = {i: r for i, r in ratings.items() if i not in (exclude or set())}
+    status = ratings_mod.resolve(con, ratings)
+    priv = {i: r for i, r in ratings.items() if i not in (exclude or set()) and status[i]["vale"] == "privada"}
     priv_ids = sorted(priv)
     priv_rating = [priv[i]["nota"] for i in priv_ids]
     priv_liked = [priv[i]["like"] for i in priv_ids]
@@ -62,12 +64,12 @@ def build(con: duckdb.DuckDBPyConnection, cfg: dict, exclude: set[int] | None = 
         SELECT unnest($priv_ids::INTEGER[]) AS tmdb_id, unnest($priv_rating::DOUBLE[]) AS rating,
                unnest($priv_liked::BOOLEAN[]) AS liked
     ), priv_seen AS (
-        SELECT * FROM private
-        WHERE tmdb_id IN (SELECT tmdb_id FROM film_meta) AND tmdb_id NOT IN (SELECT tmdb_id FROM seen)
+        SELECT * FROM private WHERE tmdb_id IN (SELECT tmdb_id FROM film_meta)
     )
     SELECT tmdb_id, rating, liked,
            coalesce(rating - mu.m, $unrated) + CASE WHEN liked THEN $liked ELSE 0 END AS w
     FROM seen, mu
+    WHERE tmdb_id NOT IN (SELECT tmdb_id FROM priv_seen)
     UNION ALL
     SELECT tmdb_id, rating, liked,
            coalesce(rating - mu.m, $unrated) + CASE WHEN liked THEN $liked ELSE 0 END
